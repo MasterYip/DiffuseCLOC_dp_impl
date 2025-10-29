@@ -5,5 +5,9 @@ setup(
   name = "diffusion_policy",
   version="1.0.0",
   packages = find_packages(),
-  install_requires=[ "diffusers", "dill", "torch", "zarr", "hydra.core"  ],
+  install_requires=[ "diffusers", 
+                    "dill", "torch", 
+                    "zarr", "hydra.core", 
+                    "wandb", "seaborn",
+                    "numba", "tqdm", "scipy"],
 )
