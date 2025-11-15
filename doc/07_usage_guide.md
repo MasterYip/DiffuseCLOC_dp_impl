@@ -13,8 +13,9 @@ This guide provides practical examples for training, evaluating, and deploying D
 cd /home/user/CodeSpace/Diffusion/cmp_diffusion_policy/diffusion_diffuse_cloc
 
 # Install dependencies (create requirements.txt if needed)
-pip install torch>=1.12 hydra-core>=1.2 wandb zarr numpy scipy
-pip install pygame moderngl pyrr  # For visualization (optional)
+# pip install torch>=1.12 hydra-core>=1.2 wandb zarr numpy scipy
+# pip install pygame moderngl pyrr  # For visualization (optional)
+pip install -e .
 ```
 
 ### Project Setup
@@ -34,13 +35,7 @@ cat diffusion_policy/config_files/joint_diffuse.yaml
 
 ```bash
 # Train with default configuration
-python train.py --config-name=joint_diffuse
-
-# Train with custom config overrides
-python train.py --config-name=joint_diffuse \
-    training.batch_size=64 \
-    training.learning_rate=5e-5 \
-    training.n_epochs=2000
+python train.py --cfg joint_diffuse.yaml --exp_name default_run
 ```
 
 ### Configuration Override Examples

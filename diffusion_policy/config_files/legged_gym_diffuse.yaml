@@ -1,0 +1,137 @@
+_target_: diffusion_policy.trainer.offline_trainer.OfflineTrainer
+
+data_collection:
+  name: null
+  record_steps: 1000000
+  noisy_state_clean_action:
+    enable: true
+    std_scale: 1.
+  perturbation_bodies:
+    enable: false
+    force_range: 0.
+    torque_range: 0.
+  perfect_expert_only: true
+  
+
+
+dataloader:
+  batch_size: 128 #256 #128
+  num_workers: 1
+  persistent_workers: true
+  pin_memory: true
+  shuffle: true
+
+val_dataloader:
+  batch_size: 2048
+  num_workers: 1
+  persistent_workers: false
+  pin_memory: true
+  shuffle: false
+
+ema:
+  _target_: diffusion_policy.backbone.ema_model.EMAModel
+  inv_gamma: 1.0
+  max_value: 0.9999
+  min_value: 0.0
+  power: 0.75
+  update_after_step: 0
+
+exp_name: null
+output_dir: "./outputs/"
+dataset_dir: "/home/takaraet/Projects/DiffuseCloC/data/" # "/home/haytham/ProtoMotions/"
+
+logging:
+  group: null
+  id: null
+  mode: online
+  name: 'velocity_loss_1'
+  project: diffuse_cloc
+  resume: true
+  tags:
+  - velocity_1
+  - default
+
+# multi_run:
+#   run_dir: data/outputs/2023.01.16/20.11.42_train_diffusion_transformer_cyber_lowdim
+#   wandb_name_base: 2023.01.16-20.11.42_train_diffusion_transformer_cyber_lowdim
+
+optimizer:
+  betas:
+  - 0.9
+  - 0.95
+  learning_rate: 0.0001
+  weight_decay: 0.001
+
+
+policy:
+  _target_: diffusion_policy.agent.bc_agent.BCAgent
+  actor:
+    _target_: diffusion_policy.modules.diffuse_cloc.DiffuseCLoC
+    backbone:
+      _target_: diffusion_policy.backbone.transformer_codiffuse.Transformer
+      x_horizon: 20  # 36
+      y_horizon: 20
+      x_input_dim: 384 #384 #384 #114 #198 #114 #198 #192 #192 # 198 #204 #192 #201 #192
+      y_input_dim: 29
+      x_output_dim: 384 #384 #384 #114 #198 #114 #198 #192 # 192 #198 #204 #192 #201 #192 
+      y_output_dim: 29
+      n_emb: 256 # 512 # 256 384 512
+      n_head: 4 # 8 # 4 6 8
+      n_layer: 2 #4 # 6 # 4 6 10
+      causal_attn: true
+      x_to_x_attn: full
+      x_to_y_attn: no_attn
+      y_to_x_attn: causal
+      y_to_y_attn: causal
+
+    denoising_steps: 20 # 20
+    predict_epsilon: false
+    denoised_clip_value: 1.0
+    action_weight_schedule: constant-to-8
+    clean_past_state: true
+    clean_past_action: false
+
+    n_past_steps: 4
+    state_emphasis: random_emph_symm
+    state_proj: true
+
+dataset:
+  _target_: diffusion_policy.dataset.legged_gym_dataset.LeggedGymDataset
+  horizon: null
+  n_obs_steps: null
+  n_past_steps: 4
+  pad_after: 1
+  pad_before: 1
+  seed: 42
+  val_ratio: 0.02
+  obs_key: obs
+  state_key: obs
+  action_key: act
+  reward_key: null
+  checkpoint_filter: null
+  max_train_episodes: null
+  symm_aug: false
+  zarr_path: your_legged_gym_data.zarr  # Update this to your actual zarr file
+
+training:
+  checkpoint_every: 10
+  debug: false
+  device: cuda:0
+  gradient_accumulate_every: 1
+  lr_scheduler: cosine
+  lr_warmup_steps: 10000
+  max_train_steps: null
+  max_val_steps: null
+  num_epochs: 1000
+  resume: false
+  resume_path: '/home/takaraet/Projects/DiffuseCloC/outputs/June-24-13-56-45-joint_diffuse' # /home/takaraet/Projects/DiffuseCloC/outputs/June-24-13-54-10-joint_diffuse'
+  rollout_every: 10
+  rollout_steps: 200
+  sample_every: 3
+  seed: 42
+  tqdm_interval_sec: 1.0
+  use_ema: true
+  val_every: 10
+
+checkpoint: 
+  save_last_ckpt: true
