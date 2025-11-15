@@ -36,6 +36,7 @@ cat diffusion_policy/config_files/joint_diffuse.yaml
 ```bash
 # Train with default configuration
 python train.py --cfg joint_diffuse.yaml --exp_name default_run
+python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
 ```
 
 ### Configuration Override Examples
@@ -44,6 +45,7 @@ python train.py --cfg joint_diffuse.yaml --exp_name default_run
 ```bash
 # Use different dataset
 python train.py dataset.zarr_path=/path/to/new_data.zarr
+
 
 # Change horizon length
 python train.py \
