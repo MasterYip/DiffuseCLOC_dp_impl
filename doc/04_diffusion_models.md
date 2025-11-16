@@ -432,6 +432,124 @@ actor:
 | **Linear Normalizers** | 0.05M | 0.2MB |
 | **Total DiffuseCLoC** | **20.0M** | **80.2MB** |
 
+## Policy Evaluation
+
+### Evaluation Script
+
+DiffuseCLoC provides an evaluation script for testing trained policies in Legged Gym environments:
+
+```bash
+python eval.py \
+    --checkpoint outputs/latest.ckpt \
+    -o eval_output \
+    --task g1_flat \
+    --num_envs 16 \
+    --max_steps 1000 \
+    --headless
+```
+
+**Arguments**:
+- `--checkpoint`: Path to trained checkpoint
+- `-o, --output_dir`: Output directory for results
+- `--task`: Legged gym task name (e.g., 'g1_flat', 'anymal_c_rough')
+- `--num_envs`: Number of parallel environments
+- `--max_steps`: Maximum steps per evaluation
+- `--n_obs_steps`: Observation history length (default: 4)
+- `--headless`: Run without visualization
+
+### Environment Runner
+
+The `LeggedGymRunner` handles policy execution:
+
+```python
+from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
+
+runner = LeggedGymRunner(
+    output_dir='eval_output',
+    task_name='g1_flat',
+    n_envs=16,
+    max_steps=1000,
+    n_obs_steps=4,  # History length for DiffuseCLoC
+)
+
+results = runner.run(policy)
+```
+
+**Observation Management**:
+```python
+# Runner maintains observation history
+obs_history: (n_envs, n_obs_steps, obs_dim)  # e.g., (16, 4, 384)
+
+# Each step:
+obs_dict = {"obs": obs_history}
+action_traj, state_traj = policy.act(obs_dict)
+actions = action_traj[:, 0, :]  # Execute first action
+
+# Update history (FIFO)
+obs_history = torch.cat([obs_history[:, 1:, :], next_obs.unsqueeze(1)], dim=1)
+```
+
+### Evaluation Metrics
+
+Results are saved to `eval_results.json`:
+
+```json
+{
+  "episode_rewards": [245.3, 312.1, 289.7, ...],
+  "episode_lengths": [800, 950, 823, ...],
+  "mean_episode_reward": 287.4,
+  "std_episode_reward": 42.3,
+  "mean_episode_length": 857.3,
+  "num_episodes": 48
+}
+```
+
+### Interface Differences from Original Repo
+
+| Component | Original Repo | DiffuseCLoC |
+|-----------|--------------|-------------|
+| **Policy Method** | `predict_action(obs_dict)` | `act(obs_dict)` |
+| **Return Format** | `{'action_pred': (B, H, Da)}` | `(action_traj, state_traj)` |
+| **Observation Key** | `obs_dict['obs']` | `obs_dict['obs']` (same) |
+| **History Shape** | `(B, n_obs, obs_dim)` | `(B, n_past_steps, obs_dim)` |
+| **Device Handling** | Via `pytorch_util` | Via `ModuleAttrMixin` |
+
+### Example: Custom Evaluation Loop
+
+```python
+import torch
+from diffusion_policy.env.legged_gym_env import LeggedGymEnv
+
+# Create environment
+env = LeggedGymEnv(task_name='g1_flat', num_envs=4)
+
+# Reset and initialize history
+obs, _ = env.reset()
+obs_history = obs.unsqueeze(1).repeat(1, 4, 1)  # (4, 4, 384)
+
+for step in range(1000):
+    # Get action from policy
+    obs_dict = {"obs": obs_history}
+    action_traj, state_traj = policy.act(obs_dict)
+    actions = action_traj[:, 0, :]  # (4, 29)
+    
+    # Step environment
+    next_obs, rewards, dones, infos = env.step(actions)
+    
+    # Update history
+    obs_history = torch.cat([
+        obs_history[:, 1:, :],
+        next_obs.unsqueeze(1)
+    ], dim=1)
+    
+    # Handle resets
+    if dones.any():
+        # Reset specific environments
+        reset_ids = torch.where(dones)[0]
+        reset_obs, _ = env.reset(env_ids=reset_ids)
+        obs_history[reset_ids] = reset_obs.unsqueeze(1).repeat(1, 4, 1)
+```
+
 ## Training vs. Inference
 
 ### Training Mode
