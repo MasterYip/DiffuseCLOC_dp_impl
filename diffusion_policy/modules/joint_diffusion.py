@@ -17,7 +17,11 @@ from diffusion_policy.backbone.base_backbone import JointSeqBackbone
 
 class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
     """
-    This module implements the basics of a Joint-distribution Diffusion Model for states and actions,
+    Joint-distribution diffusion over states and actions with independent noise schedules.
+    Key features:
+    - Separate denoising for states (x) and actions (y)
+    - Temporal and joint-specific loss weighting
+    - Inpainting of past observations for autoregressive control
     """
     backbone: JointSeqBackbone
 
@@ -67,6 +71,17 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
         past_actions=None,
         **kwargs,
     ):
+        """
+        Generate action-state trajectory from current observations via iterative denoising.
+        
+        Args:
+            nobs: (B, n_past_steps, obs_dim) - Past observations (e.g., (B, 4, 384))
+            past_actions: (B, n_past_steps-1, action_dim) - Optional past actions
+            
+        Returns:
+            action_traj: (B, horizon, action_dim) - Predicted action sequence (B, 20, 29)
+            state_traj: (B, horizon, obs_dim) - Predicted state sequence (B, 20, 384)
+        """
         B = nobs.shape[0]
         nobs = nobs[:, :self.n_past_steps, :]
         # print(nobs[0, :, 186:189])
@@ -105,6 +120,22 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
         past_actions=None,
         **kwargs,
     ):
+        """
+        Single reverse diffusion step for joint state-action denoising.
+        Inpaints past observations to maintain autoregressive consistency.
+        
+        Args:
+            nobs: (B, n_past, Do) - Clean past observations
+            action_traj: (B, H, Da) - Current noisy actions (e.g., (B, 20, 29))
+            state_traj: (B, H, Do) - Current noisy states (e.g., (B, 20, 384))
+            action_t: (H,) - Action noise levels per position
+            state_t: (H,) - State noise levels per position
+            i: int - Iteration index
+            
+        Returns:
+            action_traj: (B, H, Da) - Denoised actions
+            state_traj: (B, H, Do) - Denoised states
+        """
         device = self.device
         B, _, Do = nobs.shape
         
@@ -150,6 +181,19 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
     def predict_x0(
        self, action_traj, state_traj, action_t, state_t, **kwargs
     ):
+        """
+        Predict clean x0 from noisy trajectories using the backbone.
+        
+        Args:
+            action_traj: (B, H, Da) - Noisy action trajectory
+            state_traj: (B, H, Do) - Noisy state trajectory
+            action_t: (B, H) - Action noise levels
+            state_t: (B, H) - State noise levels
+            
+        Returns:
+            action_pred: (B, H, Da) - Predicted clean actions
+            state_pred: (B, H, Do) - Predicted clean states
+        """
         # action_t = action_t.clone() + 1
         # state_t = state_t.clone() + 1
         # state_t[:,:self.n_past_steps] = 0
@@ -179,7 +223,23 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
         self, action_traj, state_traj, action_t, state_t, action_pred, state_pred, **kwargs
     ):
         """
-        μₜ = β̃ₜ √ α̅ₜ₋₁/(1-α̅ₜ)x₀ + √ αₜ (1-α̅ₜ₋₁)/(1-α̅ₜ)xₜ
+        Compute posterior mean and variance from x0 predictions.
+        Formula: μ = coef1 * x0_pred + coef2 * x_t
+                 μₜ = β̃ₜ √ α̅ₜ₋₁/(1-α̅ₜ)x₀ + √ αₜ (1-α̅ₜ₋₁)/(1-α̅ₜ)xₜ
+
+        Args:
+            action_traj: (B, H, Da) - Current noisy actions
+            state_traj: (B, H, Do) - Current noisy states
+            action_t: (B, H) - Action noise levels
+            state_t: (B, H) - State noise levels
+            action_pred: (B, H, Da) - Predicted clean actions
+            state_pred: (B, H, Do) - Predicted clean states
+            
+        Returns:
+            action_mu: (B, H, Da) - Action posterior mean
+            state_mu: (B, H, Do) - State posterior mean
+            action_logvar: (B, H, Da) - Action log variance
+            state_logvar: (B, H, Do) - State log variance
         """
 
         if self.denoised_clip_value is not None:
@@ -207,6 +267,19 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
         state_t,
         index=None,
     ):
+        """
+        Compute posterior distribution for reverse diffusion step.
+        Combines x0 prediction with DDPM posterior formulas.
+        
+        Args:
+            action_traj: (B, H, Da) - Noisy actions
+            action_t: (B, H) - Action noise levels
+            state_traj: (B, H, Do) - Noisy states
+            state_t: (B, H) - State noise levels
+            
+        Returns:
+            action_mu, state_mu, action_logvar, state_logvar - Posterior parameters
+        """
 
         action_pred, state_pred = self.predict_x0(
             action_traj=action_traj,
@@ -258,12 +331,18 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
         state_traj,
     ):
         """
+        Compute joint training loss with temporal and joint-specific weighting.
         If predicting epsilon: E_{t, x0, ε} [||ε - ε_θ(√α̅ₜx0 + √(1-α̅ₜ)ε, t)||²
-
         Args:
-            trajectory: (B, horizon, transition_dim)
-            cond: dict with keys as step and value as observation
-            t: batch of integers
+            action_traj: (B, H, Da) - Ground truth actions (e.g., (B, 20, 29))
+            state_traj: (B, H, Do) - Ground truth states (e.g., (B, 20, 384))
+            
+        Returns:
+            total_loss: scalar - Combined loss
+            action_loss: scalar - Action loss component
+            state_loss: scalar - State loss component
+            action_pred: (B, H, Da) - Predicted actions (for logging)
+            state_pred: (B, H, Do) - Predicted states (for logging)
         """
         B = action_traj.shape[0]
         device = self.device
@@ -349,8 +428,10 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
 
     def get_loss_weights(self, loss_schedule):
         """
-        Generates loss weights based on the specified loss schedule.
+        Generate temporal loss weights for prioritizing recent predictions.
+        
         Args:
+            loss_schedule: str - Schedule type (e.g., 'constant-to-8', 'linear', 'exponential-1.0')
             loss_schedule (str): A string specifying the type of loss schedule to use.
                      Supported schedules include:
                      - 'constant-to-{n}': Sets weights to 1 for the first n steps and 0 thereafter.
@@ -358,8 +439,10 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
                      - 'cosine': Applies a cosine function to decrease weights from 1 to 0 over the action steps.
                      - 'exponential-{temp}': Applies an exponential decay to the weights, with an optional temperature parameter.
                      - 'sigmoid': Applies a sigmoid function to decrease weights from 1 to 0 over the action steps.
+
         Returns:
-            torch.Tensor: A tensor of shape (1, horizon, 1) containing the computed loss weights.
+            weights: (1, H, 1) - Loss weights per timestep position
+                     e.g., for 'constant-to-8': [1,1,1,1,1,1,1,1,0,0,...,0]
         """
         weights = torch.ones((1, self.horizon, 1), device=self.device)
 

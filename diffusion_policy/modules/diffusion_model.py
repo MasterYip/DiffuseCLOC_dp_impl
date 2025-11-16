@@ -15,7 +15,8 @@ from diffusion_policy.utils.normalizer import LinearNormalizer
 
 class SequentialDiffusionModel(ModuleAttrMixin):
     """
-    This Module implements an Unconditional Diffusion Model for sequential data
+    Unconditional DDPM for sequential data. Supports both epsilon and x0 prediction modes.
+    Uses cosine noise schedule for stable training.
     """
 
     def __init__(
@@ -42,11 +43,21 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         self.seq_shape = (self.horizon, self.output_dim)
 
     def to(self, device):
+        """Move model to device and initialize DDPM parameters (alphas, betas, etc.)."""
         super().to(device)
         self.DDPM_init()
         return self
 
     def forward(self, B):
+        """
+        Generate trajectories from pure noise via iterative denoising.
+        
+        Args:
+            B: Batch size
+            
+        Returns:
+            trajectory: (B, horizon, output_dim) - Denoised trajectories
+        """
         trajectory = torch.randn((B, *self.seq_shape), device=self.device)
 
         # Diffusion Loop
@@ -59,6 +70,17 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         return trajectory
     
     def diffuse_step(self, trajectory, t, i, **kwargs):
+        """
+        Single reverse diffusion step: x_t -> x_{t-1}.
+        
+        Args:
+            trajectory: (B, T, D) - Noisy trajectory at timestep t
+            t: (T,) - Noise level per position
+            i: int - Iteration index
+            
+        Returns:
+            trajectory: (B, T, D) - Less noisy trajectory at timestep t-1
+        """
         B = trajectory.shape[0]
         device = self.device
         # t.shape = (T,)
@@ -77,12 +99,24 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         return trajectory
 
     def p_mean_var(self, x, t, index=None, **kwargs):
+        """
+        Compute posterior mean and variance for reverse process: p(x_{t-1} | x_t).
+        
+        Args:
+            x: (B, T, D) - Noisy input at timestep t
+            t: (B, T) - Noise levels per position
+            
+        Returns:
+            mu: (B, T, D) - Predicted mean
+            logvar: (B, T, D) - Log variance (fixed schedule)
+        """
         output = self.backbone(x, t, **kwargs)
 
         # Predict x_0
         if self.predict_epsilon:
             """
             x₀ = √ 1\α̅ₜ xₜ - √ 1\α̅ₜ-1 ε
+            x₀ = √(1/ᾱ_t) x_t - √(1/ᾱ_t - 1) ε
             """
             x_pred = self.predict_x0_from_epsilon(x, t, output)
         else:   # directly predicting x₀
@@ -94,6 +128,7 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         # Get mu
         """
         μₜ = β̃ₜ √ α̅ₜ₋₁/(1-α̅ₜ)x₀ + √ αₜ (1-α̅ₜ₋₁)/(1-α̅ₜ)xₜ
+        μ_t = coef1 * x_0 + coef2 * x_t
         """
         mu = (
             extract(self.ddpm_mu_coef1, t, x.shape) * x_pred
@@ -109,12 +144,13 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         trajectory,
     ):
         """
-        If predicting epsilon: E_{t, x0, ε} [||ε - ε_θ(√α̅ₜx0 + √(1-α̅ₜ)ε, t)||²
-
+        Compute DDPM training loss: MSE between prediction and target.
+        
         Args:
-            trajectory: (B, horizon, output_dim)
-            cond: dict with keys as step and value as observation
-            t: batch of integers
+            trajectory: (B, horizon, output_dim) - Clean ground truth trajectories
+            
+        Returns:
+            loss: scalar - MSE loss (epsilon or x0 depending on mode)
         """
 
         # Forward process
@@ -141,8 +177,11 @@ class SequentialDiffusionModel(ModuleAttrMixin):
     
     def DDPM_init(self):
         """
-        DDPM parameters
-
+        Initialize DDPM parameters on device:
+        - betas: noise schedule
+        - alphas: 1 - beta
+        - alphas_cumprod: cumulative product of alphas
+        - Various derived coefficients for efficient computation
         """
         """
         βₜ
@@ -153,31 +192,31 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         """
         self.alphas = 1.0 - self.betas
         """
-        α̅ₜ= ∏ᵗₛ₌₁ αₛ 
+        ᾱ_t = ∏_{s=1}^t α_s 
         """
         self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
         """
-        α̅ₜ₋₁
+        ᾱ_{t-1}
         """
         self.alphas_cumprod_prev = torch.cat([torch.ones(1).to(self.device), self.alphas_cumprod[:-1]])
         """
-        √ α̅ₜ
+        √ᾱ_t
         """
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         """
-        √ 1-α̅ₜ
+        √(1-ᾱ_t)
         """
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
         """
-        √ 1\α̅ₜ
+        √(1/ᾱ_t)
         """
         self.sqrt_recip_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod)
         """
-        √ 1\α̅ₜ-1
+        √(1/ᾱ_t - 1)
         """
         self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod - 1)
         """
-        β̃ₜ = σₜ² = βₜ (1-α̅ₜ₋₁)/(1-α̅ₜ)
+        β̃_t = σ_t² = β_t (1-ᾱ_{t-1})/(1-ᾱ_t)
         """
         self.ddpm_var = (
             self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
@@ -185,17 +224,40 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         self.ddpm_logvar_clipped = torch.log(torch.clamp(self.ddpm_var, min=1e-20))
         """
         μₜ = β̃ₜ √ α̅ₜ₋₁/(1-α̅ₜ)x₀ + √ αₜ (1-α̅ₜ₋₁)/(1-α̅ₜ)xₜ
+        μ_t coefficients for computing posterior mean
         """
         self.ddpm_mu_coef1 = self.betas * torch.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         self.ddpm_mu_coef2 = (1.0 - self.alphas_cumprod_prev) * torch.sqrt(self.alphas) / (1.0 - self.alphas_cumprod)
     
     def predict_x0_from_epsilon(self, x_t, t, noise):
+        """
+        Convert noise prediction to x0 prediction: x_0 = (x_t - √(1-ᾱ_t) * ε) / √ᾱ_t
+        
+        Args:
+            x_t: (B, T, D) - Noisy input
+            t: (B, T) - Noise levels
+            noise: (B, T, D) - Predicted noise
+            
+        Returns:
+            x_0: (B, T, D) - Predicted clean data
+        """
         return (
             extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
         )
 
     def predict_epsilon_from_x0(self, x_t, t, x0):
+        """
+        Convert x0 prediction to noise prediction (inverse of predict_x0_from_epsilon).
+        
+        Args:
+            x_t: (B, T, D) - Noisy input
+            t: (B, T) - Noise levels
+            x0: (B, T, D) - Predicted clean data
+            
+        Returns:
+            epsilon: (B, T, D) - Implied noise
+        """
         return (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - x0) / extract(
             self.sqrt_recipm1_alphas_cumprod, t, x_t.shape
         )
@@ -204,6 +266,16 @@ class SequentialDiffusionModel(ModuleAttrMixin):
         """
         q(xₜ | x₀) = 𝒩(xₜ; √ α̅ₜ x₀, (1-α̅ₜ)I)
         xₜ = √ α̅ₜ xₒ + √ (1-α̅ₜ) ε
+        Forward diffusion: Add noise to clean data at timestep t.
+        Formula: x_t = √ᾱ_t * x_0 + √(1-ᾱ_t) * ε
+        
+        Args:
+            trajectory: (B, T, D) - Clean trajectories
+            t: (B, T) - Noise levels per position
+            noise: (B, T, D) - Optional noise (generated if None)
+            
+        Returns:
+            x_t: (B, T, D) - Noisy trajectories
         """
         if noise is None:
             device = trajectory.device
@@ -215,7 +287,15 @@ class SequentialDiffusionModel(ModuleAttrMixin):
     
 def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
     """
+    Generate cosine beta schedule for stable diffusion training.
     cosine schedule as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
+
+    Args:
+        timesteps: Number of diffusion steps (e.g., 20)
+        s: Small offset to prevent beta from being too small
+        
+    Returns:
+        betas: (timesteps,) - Noise schedule values
     """
     steps = timesteps + 1
     x = np.linspace(0, steps, steps)
@@ -226,11 +306,33 @@ def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
     return torch.tensor(betas_clipped, dtype=dtype)
 
 def extract(a, t, x_shape):
+    """
+    Extract values from array a at indices t, then reshape for broadcasting.
+    
+    Args:
+        a: (K,) - Source array (e.g., alphas_cumprod)
+        t: (B, L) - Indices to extract
+        x_shape: tuple - Target shape for broadcasting (B, L, D, ...)
+        
+    Returns:
+        out: (B, L, 1, 1, ...) - Extracted values reshaped for broadcasting
+    """
     b, l = t.shape
     out = a[t]
     return out.reshape(b, l, *((1,) * (len(x_shape) - 2)))
 
 def make_timesteps(B, i, device):
+    """
+    Create timestep tensor for batch processing.
+    
+    Args:
+        B: Batch size
+        i: int or (L,) - Timestep value(s)
+        device: Target device
+        
+    Returns:
+        t: (B,) or (B, L) - Timestep tensor
+    """
     if isinstance(i, int):
         t = torch.full((B,), i, device=device, dtype=torch.long)
     else:

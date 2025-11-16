@@ -9,7 +9,11 @@ from diffusion_policy.modules.joint_diffusion import JointDiffusionActor
 count = 0
 class DiffuseCLoC(JointDiffusionActor):
     """
-    This module implements rolling scheme and state emphasis used in DiffuseCLoC
+    DiffuseCLoC: Joint diffusion with rolling inference and state emphasis.
+    Key features:
+    - Rolling buffer: FIFO trajectory buffer for smooth online inference
+    - State emphasis: Projection matrix to emphasize global features (root, velocity)
+    - Flexible noise schedules: Custom denoising patterns for efficiency
     """
 
     def __init__(self,  
@@ -28,6 +32,16 @@ class DiffuseCLoC(JointDiffusionActor):
         nobs,
         **kwargs,
     ):
+        """
+        Generate actions with rolling inference and state emphasis projection.
+        
+        Args:
+            nobs: (B, n_past, Do) - Past observations (e.g., (B, 4, 384))
+            
+        Returns:
+            action_traj: (B, H, Da) - Predicted actions (B, 20, 29)
+            state_traj: (B, H, Do) - Predicted states in original space (B, 20, 384)
+        """
         # Loop
         B = nobs.shape[0]
         nobs = nobs[:, :self.n_past_steps, :]
@@ -111,6 +125,7 @@ class DiffuseCLoC(JointDiffusionActor):
         state_t,
         index=None,
     ):
+        """Identical to parent, no modifications needed."""
 
         action_pred, state_pred = self.predict_x0(
             action_traj=action_traj,
@@ -138,6 +153,16 @@ class DiffuseCLoC(JointDiffusionActor):
         action_traj,
         state_traj,
     ):
+        """
+        Apply state emphasis before computing loss in projected space.
+        
+        Args:
+            action_traj: (B, H, Da) - Actions (B, 20, 29)
+            state_traj: (B, H, Do) - States (B, 20, 384)
+            
+        Returns:
+            Same as JointDiffusionActor.p_losses
+        """
         state_traj = state_traj @ self.emphasis_mat
         return super().p_losses(action_traj, state_traj)
 
@@ -145,6 +170,18 @@ class DiffuseCLoC(JointDiffusionActor):
 # -------------------------------- HELPER FUNCTIONS -----------------------------------------
 
     def get_rolling_traj(self, chain, t_all):
+        """
+        Extract rolling buffer from denoising chain based on noise schedule.
+        Maintains FIFO buffer of partially denoised trajectories.
+        
+        Args:
+            chain: List[(traj, t)] - Denoising history
+                   traj: (B, H, D), t: (H,)
+            t_all: (K, H) - Target noise schedule
+            
+        Returns:
+            rolled_traj: (B, H-1, D) - Partially denoised trajectories for next step
+        """
         traj = torch.stack([c[0] for c in chain], dim=1)[:,:,1:,:] # shape = (B,K,T,A_dim) K = denoising_length
         idx = torch.stack([c[1] for c in chain])[:,1:] # shape = (K,T)
         needed_idx = t_all[0,:-1] + 1
@@ -154,8 +191,35 @@ class DiffuseCLoC(JointDiffusionActor):
         return traj
     
     def generate_denoising_matrix(self, schedule, is_state=False, **kwargs):
+        """
+        Generate noise schedule matrix for flexible denoising patterns.
+        
+        Args:
+            schedule: str - Schedule type ('full', 'full_decreasing', 'from_xT_decreasing', 'from_xT_step')
+            is_state: bool - Whether schedule is for states (affects n_future_steps)
+            
+        Returns:
+            t_all: (K, H) - Noise levels per (iteration, position)
+                   e.g., for 'full_decreasing' with H=20, K=20:
+                   [[19,19,18,17,...,0],
+                    [18,18,17,16,...,0],
+                    ...
+                    [0,0,0,0,...,0]]
+        """
         
         def decreasing_matrix(start_value, is_state, step_size=1, all_clear=False):
+            """
+            Create decreasing noise schedule matrix.
+            
+            Args:
+                start_value: int - Starting noise level
+                is_state: bool - Affects horizon calculation
+                step_size: int - Decrement step size
+                
+            Returns:
+                matrix: (K, H) - Noise schedule
+                n: int - Padding size
+            """
             if step_size == 1:
                 if is_state:
                     end = start_value + self.n_future_steps
@@ -202,6 +266,17 @@ class DiffuseCLoC(JointDiffusionActor):
         return action_t_all
 
     def get_emphasis_projection(self):
+        """
+        Create state emphasis projection matrix to amplify important features.
+        Constructs emphasis_mat (Do x Do or Do x 2*Do) and its pseudoinverse.
+        
+        For 'random_emph_symm' with Do=384:
+        - Projects to 768-dim space: [emphasized_state, original_state]
+        - Emphasizes root pose/velocity features (dims 180-189) by 4x
+        - Maintains left-right symmetry for legged locomotion
+        
+        Sets self.emphasis_mat and self.emphasis_mat_inv as buffers.
+        """
         state_dim = self.backbone.x_output_dim
         if self.state_emphasis == "rand":
             emphasis_mat = torch.randn((state_dim,state_dim),device=self.device) / np.sqrt(state_dim)
