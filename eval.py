@@ -32,7 +32,7 @@ from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
 @click.option('--num_envs', default=16, help='Number of parallel environments')
 @click.option('--max_steps', default=1000, help='Maximum steps per evaluation')
 @click.option('--n_obs_steps', default=4, help='Observation history length')
-@click.option('--headless', is_flag=True, default=True, help='Run headless (no visualization)')
+@click.option('--headless', is_flag=True, default=False, help='Run headless (no visualization)')
 def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps, headless):
     """Evaluate a trained DiffuseCLoC policy in Legged Gym."""
     
