@@ -457,6 +457,16 @@ python eval.py \
 - `--n_obs_steps`: Observation history length (default: 4)
 - `--headless`: Run without visualization
 
+e.g.
+```bash
+python eval.py \
+    --checkpoint outputs/November-15-21-57-21-legged_gym_diffuse/checkpoints/latest.ckpt \
+    -o eval_output \
+    --task elspider_air_flat \
+    --num_envs 16 \
+    --max_steps 1000
+```
+
 ### Environment Runner
 
 The `LeggedGymRunner` handles policy execution:

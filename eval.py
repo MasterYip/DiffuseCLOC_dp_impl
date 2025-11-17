@@ -55,9 +55,35 @@ def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps,
         cfg = None
 
     # Load policy from checkpoint
-    if 'state_dicts' in payload and 'model' in payload['state_dicts']:
+    # FIXME: this the temporary fix for loading policy weights
+    print("Available keys in checkpoint:", payload['state_dicts'].keys() if 'state_dicts' in payload else payload.keys())
+    
+    if 'state_dicts' in payload and 'agent' in payload['state_dicts']:
         # Standard checkpoint format
-        policy_state_dict = payload['state_dicts']['model']
+        full_state_dict = payload['state_dicts']['agent']
+        
+        # Extract only the actor (policy) weights, removing the 'actor.' prefix
+        policy_state_dict = {}
+        normalizer_state_dict = {}
+        
+        for key, value in full_state_dict.items():
+            if key.startswith('actor.'):
+                # Remove 'actor.' prefix to match the policy structure
+                new_key = key[6:]  # Remove 'actor.' (6 characters)
+                if not new_key.startswith('normalizer.'):
+                    policy_state_dict[new_key] = value
+                else:
+                    # Store normalizer separately
+                    normalizer_state_dict[new_key] = value
+            elif key.startswith('normalizer.'):
+                normalizer_state_dict[key] = value
+            elif not key.startswith('_dummy_variable'):
+                # Direct policy weights without prefix
+                policy_state_dict[key] = value
+                
+        print(f"Extracted {len(policy_state_dict)} policy parameters")
+        print(f"Extracted {len(normalizer_state_dict)} normalizer parameters")
+        
     elif 'model' in payload:
         # Direct model state dict
         policy_state_dict = payload['model']

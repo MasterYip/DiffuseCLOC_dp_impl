@@ -127,7 +127,7 @@ class LeggedGymRunner(BaseLowdimRunner):
                 # DiffuseCLoC returns (action_traj, state_traj)
                 # action_traj: (B, horizon, action_dim)
                 # We use the first action
-                action_traj, state_traj = policy.act(obs_dict)
+                action_traj, state_traj = policy.act(obs_dict["obs"])
                 actions = action_traj[:, 0, :]  # (B, action_dim)
 
             # Step environment

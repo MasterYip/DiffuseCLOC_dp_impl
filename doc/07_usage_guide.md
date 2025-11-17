@@ -39,6 +39,17 @@ python train.py --cfg joint_diffuse.yaml --exp_name default_run
 python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
 ```
 
+### Eval
+
+```bash
+python eval.py \
+    --checkpoint outputs/November-17-09-40-13-legged_gym_diffuse/checkpoints/50.ckpt \
+    -o eval_output \
+    --task elspider_air_flat \
+    --num_envs 16 \
+    --max_steps 1000
+```
+
 ### Configuration Override Examples
 
 #### Dataset Configuration
