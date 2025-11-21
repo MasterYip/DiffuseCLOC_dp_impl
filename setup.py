@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
   name = "diffusion_policy",
-  version="1.0.0",
+  version="1.0.1",
   packages = find_packages(),
   install_requires=[ "diffusers", 
                     "dill", "torch", 
