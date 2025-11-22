@@ -28,7 +28,7 @@ from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
 
 @click.command()
 @click.option('-c', '--checkpoint', required=True, help='Path to checkpoint file')
-@click.option('--config', default=None, help='Config file to load instead of using checkpoint config (e.g., joint_diffuse.yaml)')
+@click.option('--config', default="legged_gym_diffuse.yaml", help='Config file to load instead of using checkpoint config (e.g., joint_diffuse.yaml)')
 @click.option('-o', '--output_dir', required=True, help='Output directory for results')
 @click.option('-d', '--device', default='cuda:0', help='Device for inference')
 @click.option('-t', '--task', default='g1_flat', help='Legged gym task name')
@@ -148,6 +148,80 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
     print(f"\nPolicy loaded on {device}")
     print(f"Policy type: {type(policy).__name__}")
 
+    # Create BCAgent with proper normalization
+    from diffusion_policy.agent.bc_agent import BCAgent
+    from diffusion_policy.utils.normalizer import LinearNormalizer
+    
+    print("Creating BCAgent with normalization...")
+    bc_agent = BCAgent(actor=policy)
+    
+    # Initialize normalizer from checkpoint if available
+    if 'normalizer' in payload:
+        print("Loading normalizer from checkpoint...")
+        normalizer_dict = payload['normalizer']
+        
+        # Create normalizer from checkpoint data
+        normalizer = {}
+        for key, norm_data in normalizer_dict.items():
+            if isinstance(norm_data, dict) and 'params' in norm_data:
+                # Standard normalizer format
+                params = norm_data['params']
+                norm = LinearNormalizer()
+                norm.fit(params)
+                normalizer[key] = norm
+            else:
+                # Direct tensor format (legacy)
+                norm = LinearNormalizer()
+                if hasattr(norm_data, 'shape'):
+                    # Assume it's normalized data, create identity normalizer
+                    norm.params_dict = {
+                        'input_stats': {'min': torch.zeros_like(norm_data), 'max': torch.ones_like(norm_data)}
+                    }
+                normalizer[key] = norm
+                
+        bc_agent.normalizer = normalizer
+        print(f"Loaded normalizer with keys: {list(normalizer.keys())}")
+        
+    elif normalizer_state_dict:
+        print("Creating normalizer from extracted normalizer weights...")
+        # Try to reconstruct normalizer from state dict
+        normalizer = {}
+        
+        # Group normalizer parameters by type (obs, action)
+        for key, value in normalizer_state_dict.items():
+            if 'obs' in key.lower():
+                if 'obs' not in normalizer:
+                    normalizer['obs'] = LinearNormalizer()
+                # Set normalizer parameters (this is a simplified approach)
+                if 'min' in key:
+                    normalizer['obs']._min = value
+                elif 'max' in key:
+                    normalizer['obs']._max = value
+            elif 'action' in key.lower():
+                if 'action' not in normalizer:
+                    normalizer['action'] = LinearNormalizer()
+                if 'min' in key:
+                    normalizer['action']._min = value
+                elif 'max' in key:
+                    normalizer['action']._max = value
+                    
+        bc_agent.normalizer = normalizer
+        print(f"Reconstructed normalizer with keys: {list(normalizer.keys())}")
+        
+    else:
+        print("Warning: No normalizer found in checkpoint! Creating identity normalizer...")
+        # Create identity normalizer as fallback
+        from diffusion_policy.utils.normalizer import IdentityNormalizer
+        normalizer = {
+            'obs': IdentityNormalizer(),
+            'action': IdentityNormalizer()
+        }
+        bc_agent.normalizer = normalizer
+
+    # Set device for BCAgent
+    bc_agent.to(device)
+    print(f"BCAgent created and moved to {device}")
+
     # Create environment runner
     env_runner = LeggedGymRunner(
         output_dir=output_dir,
@@ -159,18 +233,19 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         device=device,
     )
 
-    # Run evaluation with config (for CLoCAnalyzer)
+    # Run evaluation with BCAgent (includes proper normalization)
     print(f"\nStarting evaluation...")
     print(f"  Task: {task}")
     print(f"  Num envs: {num_envs}")
     print(f"  Max steps: {max_steps}")
     print(f"  Headless: {headless}")
+    print(f"  Normalization: {'Enabled' if hasattr(bc_agent, 'normalizer') else 'Disabled'}")
     if cfg and cfg.get('cloc_analyzer', {}).get('enabled', False):
         print(f"  CLoCAnalyzer: ENABLED")
     else:
         print(f"  CLoCAnalyzer: DISABLED")
 
-    results = env_runner.run(policy, cfg)
+    results = env_runner.run(bc_agent, cfg)
 
     # Save results to JSON
     output_file = os.path.join(output_dir, 'eval_results.json')

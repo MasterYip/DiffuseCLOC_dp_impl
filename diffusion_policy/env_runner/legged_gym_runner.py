@@ -64,12 +64,12 @@ class LeggedGymRunner(BaseLowdimRunner):
         # Environment created lazily in run() to avoid issues during training
         self.env = None
 
-    def run(self, policy, cfg=None) -> Dict:
+    def run(self, bc_agent, cfg=None) -> Dict:
         """
         Run policy evaluation in legged gym environment with configurable trajectory analysis.
         
         Args:
-            policy: Policy with act(obs_dict) method that returns (actions, states)
+            bc_agent: BCAgent with proper normalization and act() method
             cfg: Hydra config object containing cloc_analyzer settings
                    
         Returns:
@@ -87,9 +87,9 @@ class LeggedGymRunner(BaseLowdimRunner):
                 headless=self.headless
             )
 
-        # Device handling
+        # Device handling - use bc_agent's device
         if self.device is None:
-            device = policy.device
+            device = bc_agent.device
         else:
             device = torch.device(self.device)
 
@@ -147,7 +147,7 @@ class LeggedGymRunner(BaseLowdimRunner):
 
         # Evaluation loop
         for step_idx in range(self.max_steps):
-            # Prepare observation dict for policy
+            # Prepare observation dict for BCAgent (with proper normalization)
             obs_dict = {"obs": obs_history.to(device)}
 
             # Time policy inference if analyzer is enabled
@@ -156,11 +156,21 @@ class LeggedGymRunner(BaseLowdimRunner):
                 inference_end = torch.cuda.Event(enable_timing=True)
                 inference_start.record()
             
-            # Get action from policy
+            # Get action from BCAgent (includes normalization/unnormalization)
             with torch.no_grad():
-                # DiffuseCLoC returns (action_traj, state_traj)
-                action_traj, state_traj = policy.act(obs_dict["obs"])
-                actions = action_traj[:, 0, :]  # (B, action_dim)
+                # BCAgent.act() handles normalization internally and returns unnormalized actions
+                result = bc_agent.act(obs_dict)
+                
+                # Handle different return types from BCAgent
+                if isinstance(result, tuple) and len(result) >= 2:
+                    # Joint diffusion case: (action_traj, state_traj, ...)
+                    action_traj, state_traj = result[0], result[1]
+                    actions = action_traj[:, 0, :] if action_traj.dim() == 3 else action_traj
+                else:
+                    # Standard diffusion case: just actions
+                    actions = result[:, 0, :] if result.dim() == 3 else result
+                    action_traj = result
+                    state_traj = None
 
             if analyzer:
                 inference_end.record()
@@ -173,7 +183,7 @@ class LeggedGymRunner(BaseLowdimRunner):
             next_obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
 
             # Trajectory analysis (if enabled)
-            if analyzer:
+            if analyzer and state_traj is not None:
                 # Determine which environments to analyze
                 env_indices = list(range(self.n_envs)) if analyze_all_envs else [analyze_env_idx]
                 
@@ -213,7 +223,7 @@ class LeggedGymRunner(BaseLowdimRunner):
                         step_idx=step_idx,
                         obs_history=obs_history[env_idx:env_idx+1],  # Single env slice
                         action_traj=action_traj[env_idx:env_idx+1],
-                        state_traj=state_traj[env_idx:env_idx+1],
+                        state_traj=state_traj[env_idx:env_idx+1] if state_traj is not None else None,
                         executed_action=actions[env_idx:env_idx+1],
                         reward=rewards[env_idx].item(),
                         env_info=env_info,

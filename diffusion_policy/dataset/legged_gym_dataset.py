@@ -183,21 +183,19 @@ class LeggedGymDataset(OfflineDataset):
 
         indices = buffer_start_idx[:, None] + np.arange(self.horizon)
 
-        keys = ["obs", "action"]
+        keys = data.keys()
         tensor_data = {key: torch.tensor(data[key][indices]) for key in keys}
         batch = [
             {key: tensor_data[key][i] for key in keys} for i in range(len(indices))
         ]
 
         # Apply Collate Function
-        normalized_batch = self.collate_fn(batch)
-        clean_data = {
-            "obs": normalized_batch["obs"].clone(),
-            "action": normalized_batch["action"].clone(),
-        }
+        normalized_batch = self.collate_fn(batch, normalize=True)
+        data["obs"] = normalized_batch["obs"].clone()
+        data["action"] = normalized_batch["action"].clone()
 
         normalizer = LinearNormalizer()
-        normalizer.fit(data=clean_data, last_n_dims=1, mode=mode, **kwargs)
+        normalizer.fit(data=data, last_n_dims=1, mode=mode, **kwargs)
         return normalizer
 
     def get_all_actions(self) -> torch.Tensor:
@@ -224,10 +222,13 @@ class LeggedGymDataset(OfflineDataset):
         torch_data = dict_apply(data, torch.from_numpy)
         return torch_data
 
-    def collate_fn(self, batch):
+    def collate_fn(self, batch, normalize=False):
         """Collate function for batching."""
         obs_stack = torch.stack([item["obs"] for item in batch])
         act_stack = torch.stack([item["action"] for item in batch])
+
+        if normalize:
+            pass
 
         return {"obs": obs_stack, "action": act_stack}
 
