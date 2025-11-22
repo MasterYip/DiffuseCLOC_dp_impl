@@ -134,3 +134,93 @@ training:
 
 checkpoint:
   save_last_ckpt: true
+
+# CLoCAnalyzer Configuration for Real-time Trajectory Analysis
+cloc_analyzer:
+  # Enable/disable trajectory analysis during evaluation
+  enabled: true                     # Set to false to disable analysis completely
+  
+  # Environment selection for analysis
+  analyze_env_idx: 0                # Which environment to analyze (0-based index)
+  analyze_all_envs: false           # Set to true to analyze all environments (slower)
+  
+  # Visualization settings
+  visualization:
+    update_interval: 5              # Update plots every N steps
+    save_plots: true                # Save episode analysis plots
+    show_realtime: true             # Show matplotlib window during eval
+    plot_size: [18, 12]            # Figure size [width, height] in inches
+    
+  # Data collection settings  
+  data:
+    history_length: 500             # Number of timesteps to keep in memory
+    horizon: 36                     # Prediction horizon (matches policy)
+    n_obs_steps: 4                  # Observation history length
+    
+  # Output settings
+  output:
+    output_dir: "./trajectory_analysis/"  # Directory for saved plots
+    save_frequency: "episode"       # Save plots: "never", "episode", "periodic"
+    save_interval: 50               # Save every N steps (if periodic)
+    
+  # Dimension selection for visualization
+  selected_dims:
+    # State dimensions to visualize (legged locomotion specific)
+    obs: [0, 1, 2, 3, 4, 5]         # Base position + orientation
+    action: [0, 1, 2, 3, 4, 5]      # Hip joints (left/right)
+    state: [0, 1, 2, 3, 4, 5]       # Same as obs for consistency
+    
+  # Diagnostic thresholds
+  diagnostics:
+    # Action magnitude thresholds
+    min_action_magnitude: 0.01      # Warning if actions too small
+    max_action_magnitude: 10.0      # Warning if actions too large
+    
+    # Velocity tracking thresholds  
+    max_velocity_error: 1.0         # Warning if vel tracking error > threshold
+    
+    # Inference performance thresholds
+    max_inference_time: 0.1         # Warning if inference > 100ms
+    target_fps: 50                  # Target control frequency
+    
+  # Issue detection settings
+  issue_detection:
+    enabled: true                   # Enable automatic issue detection
+    check_interval: 200             # Check for issues every N steps
+    print_recommendations: true     # Print solutions when issues detected
+    
+    # Specific issue checks
+    check_action_magnitude: true    # Detect weak/excessive actions
+    check_velocity_tracking: true   # Detect poor command following
+    check_inference_speed: true     # Detect slow inference
+    check_episode_length: true      # Detect premature termination
+    
+  # Robot-specific settings for legged locomotion
+  robot_config:
+    # Command velocity extraction
+    cmd_vel_dims: [0, 1, 2]         # [vx, vy, vyaw] command dimensions
+    robot_vel_dims: [3, 4, 5]       # Robot velocity dimensions in observation
+    
+    # Root position tracking (for trajectory visualization)
+    root_pos_dims: [0, 1]           # [x, y] position dimensions
+    root_vel_dims: [3, 4]           # [vx, vy] velocity dimensions
+    
+    # Joint groups for analysis
+    joint_groups:
+      hips: [0, 1, 2, 3, 4, 5]      # Hip joint indices
+      knees: [6, 7, 8, 9]           # Knee joint indices  
+      ankles: [10, 11, 12, 13]      # Ankle joint indices
+      
+  # Advanced analysis features
+  advanced:
+    # Trajectory smoothness analysis
+    check_smoothness: true          # Analyze action/state smoothness
+    smoothness_window: 10           # Window size for smoothness computation
+    
+    # Frequency analysis
+    fft_analysis: false             # Perform FFT analysis (expensive)
+    fft_window: 100                 # Window size for FFT
+    
+    # Phase analysis for periodic gaits
+    gait_analysis: true             # Analyze gait patterns
+    gait_frequency_range: [0.5, 3.0]  # Expected gait frequency range [Hz]

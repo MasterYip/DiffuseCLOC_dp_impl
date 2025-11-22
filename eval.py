@@ -3,6 +3,7 @@ Evaluation script for DiffuseCLoC policies in Legged Gym environments.
 
 Usage:
     python eval.py --checkpoint outputs/latest.ckpt -o eval_output --task g1_flat --num_envs 16
+    python eval.py --checkpoint outputs/latest.ckpt --config joint_diffuse.yaml -o eval_output --task g1_flat
 """
 
 import sys
@@ -21,11 +22,13 @@ import torch
 import json
 from omegaconf import OmegaConf
 
+from diffusion_policy import DIFFUSION_POLICY_ROOT
 from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
 
 
 @click.command()
 @click.option('-c', '--checkpoint', required=True, help='Path to checkpoint file')
+@click.option('--config', default=None, help='Config file to load instead of using checkpoint config (e.g., joint_diffuse.yaml)')
 @click.option('-o', '--output_dir', required=True, help='Output directory for results')
 @click.option('-d', '--device', default='cuda:0', help='Device for inference')
 @click.option('-t', '--task', default='g1_flat', help='Legged gym task name')
@@ -33,7 +36,7 @@ from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
 @click.option('--max_steps', default=1000, help='Maximum steps per evaluation')
 @click.option('--n_obs_steps', default=4, help='Observation history length')
 @click.option('--headless', is_flag=True, default=False, help='Run headless (no visualization)')
-def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps, headless):
+def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_obs_steps, headless):
     """Evaluate a trained DiffuseCLoC policy in Legged Gym."""
     
     # Create output directory
@@ -41,20 +44,37 @@ def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps,
         click.confirm(f"Output path {output_dir} exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Load checkpoint
-    print(f"Loading checkpoint: {checkpoint}")
-    payload = torch.load(checkpoint, map_location='cpu')
-    
-    # Extract config and policy
-    if 'cfg' in payload:
-        cfg = payload['cfg']
-        print("\nCheckpoint configuration:")
+    # Load configuration
+    cfg = None
+    if config is not None:
+        # Load config from file (similar to train.py)
+        print(f"Loading configuration from file: {config}")
+        config_path = os.path.join(DIFFUSION_POLICY_ROOT, './config_files', config)
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        
+        cfg = OmegaConf.load(config_path)
+        OmegaConf.resolve(cfg)
+        print("\nLoaded configuration from file:")
         print(OmegaConf.to_yaml(cfg))
     else:
-        print("Warning: No config found in checkpoint")
-        cfg = None
+        # Try to load config from checkpoint payload (original behavior)
+        print(f"Loading checkpoint: {checkpoint}")
+        payload = torch.load(checkpoint, map_location='cpu')
+        
+        if 'cfg' in payload:
+            cfg = payload['cfg']
+            print("\nLoaded configuration from checkpoint:")
+            print(OmegaConf.to_yaml(cfg))
+        else:
+            print("Warning: No config found in checkpoint and no config file specified")
 
-    # Load policy from checkpoint
+    # Load checkpoint (reload if we loaded config from file)
+    if config is not None:
+        print(f"Loading checkpoint: {checkpoint}")
+        payload = torch.load(checkpoint, map_location='cpu')
+    
+    # Extract policy weights
     # FIXME: this the temporary fix for loading policy weights
     print("Available keys in checkpoint:", payload['state_dicts'].keys() if 'state_dicts' in payload else payload.keys())
     
@@ -94,6 +114,7 @@ def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps,
     if cfg is not None:
         from hydra.utils import instantiate
         policy = instantiate(cfg.policy.actor)
+        print(f"Created policy from config: {type(policy).__name__}")
     else:
         # Fallback: create default DiffuseCLoC
         from diffusion_policy.modules.diffuse_cloc import DiffuseCLoC
@@ -138,14 +159,18 @@ def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps,
         device=device,
     )
 
-    # Run evaluation
+    # Run evaluation with config (for CLoCAnalyzer)
     print(f"\nStarting evaluation...")
     print(f"  Task: {task}")
     print(f"  Num envs: {num_envs}")
     print(f"  Max steps: {max_steps}")
     print(f"  Headless: {headless}")
-    
-    results = env_runner.run(policy)
+    if cfg and cfg.get('cloc_analyzer', {}).get('enabled', False):
+        print(f"  CLoCAnalyzer: ENABLED")
+    else:
+        print(f"  CLoCAnalyzer: DISABLED")
+
+    results = env_runner.run(policy, cfg)
 
     # Save results to JSON
     output_file = os.path.join(output_dir, 'eval_results.json')
@@ -154,19 +179,42 @@ def main(checkpoint, output_dir, device, task, num_envs, max_steps, n_obs_steps,
     
     print(f"\nResults saved to: {output_file}")
 
+    # Save configuration used for evaluation
+    if cfg is not None:
+        config_output_file = os.path.join(output_dir, 'eval_config.yaml')
+        with open(config_output_file, 'w') as f:
+            OmegaConf.save(cfg, f)
+        print(f"Config saved to: {config_output_file}")
+
     # Save summary
     summary_file = os.path.join(output_dir, 'eval_summary.txt')
     with open(summary_file, 'w') as f:
         f.write(f"Evaluation Summary\n")
         f.write(f"==================\n\n")
         f.write(f"Checkpoint: {checkpoint}\n")
+        f.write(f"Config Source: {'File (' + config + ')' if config else 'Checkpoint payload'}\n")
         f.write(f"Task: {task}\n")
         f.write(f"Num Envs: {num_envs}\n")
-        f.write(f"Max Steps: {max_steps}\n\n")
+        f.write(f"Max Steps: {max_steps}\n")
+        f.write(f"CLoCAnalyzer: {'ENABLED' if cfg and cfg.get('cloc_analyzer', {}).get('enabled', False) else 'DISABLED'}\n\n")
         f.write(f"Results:\n")
         f.write(f"  Episodes: {results['num_episodes']}\n")
         f.write(f"  Mean Reward: {results['mean_episode_reward']:.2f} ± {results['std_episode_reward']:.2f}\n")
         f.write(f"  Mean Length: {results['mean_episode_length']:.1f}\n")
+        
+        # Add analyzer summary if available
+        if results.get('analyzer_enabled', False) and results.get('analyzer_summary'):
+            f.write(f"\nTrajectory Analysis:\n")
+            analyzer_summary = results['analyzer_summary']
+            if 'inference_time' in analyzer_summary:
+                inf_time = analyzer_summary['inference_time']
+                f.write(f"  Inference Time: {inf_time['mean']*1000:.1f}ms ± {inf_time['std']*1000:.1f}ms\n")
+            if 'action_magnitude' in analyzer_summary:
+                act_mag = analyzer_summary['action_magnitude']
+                f.write(f"  Action Magnitude: {act_mag['mean']:.3f} ± {act_mag['std']:.3f}\n")
+            if 'velocity_tracking_error' in analyzer_summary:
+                vel_err = analyzer_summary['velocity_tracking_error']
+                f.write(f"  Velocity Tracking Error: {vel_err['mean']:.3f}m/s ± {vel_err['std']:.3f}m/s\n")
     
     print(f"Summary saved to: {summary_file}")
 

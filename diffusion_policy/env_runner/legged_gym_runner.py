@@ -64,24 +64,16 @@ class LeggedGymRunner(BaseLowdimRunner):
         # Environment created lazily in run() to avoid issues during training
         self.env = None
 
-    def run(self, policy) -> Dict:
+    def run(self, policy, cfg=None) -> Dict:
         """
-        Run policy evaluation in legged gym environment with trajectory analysis.
+        Run policy evaluation in legged gym environment with configurable trajectory analysis.
         
         Args:
             policy: Policy with act(obs_dict) method that returns (actions, states)
-                   obs_dict: {'obs': (B, n_obs_steps, obs_dim)}
-                   returns: actions (B, horizon, action_dim), states (B, horizon, obs_dim)
-            
+            cfg: Hydra config object containing cloc_analyzer settings
+                   
         Returns:
-            results: {
-                'episode_rewards': List of total rewards per episode,
-                'episode_lengths': List of episode lengths,
-                'mean_episode_reward': Average reward,
-                'mean_episode_length': Average length,
-                'num_episodes': Total episodes completed,
-                'analyzer_summary': Diagnostic summary from trajectory analyzer
-            }
+            results: Evaluation results with analyzer summary
         """
         # Import analyzer
         from diffusion_policy.utils.cloc_analyzer import CLoCAnalyzer, diagnose_training_issues, print_training_recommendations
@@ -101,18 +93,33 @@ class LeggedGymRunner(BaseLowdimRunner):
         else:
             device = torch.device(self.device)
 
-        # Initialize trajectory analyzer
-        analyzer = CLoCAnalyzer(
-            n_obs_steps=self.n_obs_steps,
-            horizon=20,  # Assuming DiffuseCLoC horizon
-            history_length=500,
-            update_interval=5,  # Update visualization every 5 steps
-            save_plots=True,
-            output_dir=os.path.join(self.output_dir, "trajectory_analysis")
-        )
+        # Initialize trajectory analyzer with config parameters
+        analyzer = None
+        analyzer_cfg = cfg.get('cloc_analyzer', {}) if cfg else {}
+        
+        if analyzer_cfg.get('enabled', False):
+            # Extract configuration parameters
+            viz_cfg = analyzer_cfg.get('visualization', {})
+            data_cfg = analyzer_cfg.get('data', {})
+            output_cfg = analyzer_cfg.get('output', {})
+            selected_dims = analyzer_cfg.get('selected_dims', {})
+            
+            analyzer = CLoCAnalyzer(
+                n_obs_steps=data_cfg.get('n_obs_steps', self.n_obs_steps),
+                horizon=data_cfg.get('horizon', 20),
+                history_length=data_cfg.get('history_length', 500),
+                update_interval=viz_cfg.get('update_interval', 10),
+                save_plots=output_cfg.get('save_frequency', 'never') != 'never',
+                output_dir=os.path.join(self.output_dir, output_cfg.get('output_dir', 'trajectory_analysis')),
+                selected_dims=selected_dims if selected_dims else None
+            )
 
-        print("Starting evaluation with real-time trajectory analysis...")
-        print("Visualization will show: obs history, action/state predictions, velocity tracking")
+            print("Starting evaluation with configurable trajectory analysis...")
+            print(f"Analysis config: enabled={analyzer_cfg.get('enabled')}, "
+                  f"env_idx={analyzer_cfg.get('analyze_env_idx', 0)}, "
+                  f"update_interval={viz_cfg.get('update_interval', 10)}")
+        else:
+            print("Starting evaluation without trajectory analysis (disabled in config)")
         
         # Reset environment
         obs, info = self.env.reset()
@@ -134,61 +141,88 @@ class LeggedGymRunner(BaseLowdimRunner):
             mininterval=self.tqdm_interval_sec
         )
 
+        # Get analysis environment index
+        analyze_env_idx = analyzer_cfg.get('analyze_env_idx', 0) if analyzer_cfg else 0
+        analyze_all_envs = analyzer_cfg.get('analyze_all_envs', False) if analyzer_cfg else False
+
         # Evaluation loop
         for step_idx in range(self.max_steps):
             # Prepare observation dict for policy
             obs_dict = {"obs": obs_history.to(device)}
 
-            # Time policy inference
-            inference_start = torch.cuda.Event(enable_timing=True)
-            inference_end = torch.cuda.Event(enable_timing=True)
-            
-            inference_start.record()
+            # Time policy inference if analyzer is enabled
+            if analyzer:
+                inference_start = torch.cuda.Event(enable_timing=True)
+                inference_end = torch.cuda.Event(enable_timing=True)
+                inference_start.record()
             
             # Get action from policy
             with torch.no_grad():
                 # DiffuseCLoC returns (action_traj, state_traj)
-                # action_traj: (B, horizon, action_dim)
-                # We use the first action
                 action_traj, state_traj = policy.act(obs_dict["obs"])
                 actions = action_traj[:, 0, :]  # (B, action_dim)
 
-            inference_end.record()
-            torch.cuda.synchronize()
-            inference_time = inference_start.elapsed_time(inference_end) / 1000.0  # Convert to seconds
+            if analyzer:
+                inference_end.record()
+                torch.cuda.synchronize()
+                inference_time = inference_start.elapsed_time(inference_end) / 1000.0
+            else:
+                inference_time = 0.0
 
             # Step environment
             next_obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
 
-            # Extract environment info for first environment
-            env_info = {}
-            if isinstance(infos, dict):
-                env_info = infos
-            elif hasattr(infos, '__len__') and len(infos) > 0:
-                env_info = infos[0] if isinstance(infos[0], dict) else {}
+            # Trajectory analysis (if enabled)
+            if analyzer:
+                # Determine which environments to analyze
+                env_indices = list(range(self.n_envs)) if analyze_all_envs else [analyze_env_idx]
                 
-            # Get command from environment (velocity commands for locomotion)
-            if hasattr(self.env, 'get_commands'):
-                try:
-                    commands = self.env.get_commands()
-                    if commands is not None:
-                        env_info['commands'] = commands[0].cpu().numpy()  # First env
-                except:
-                    env_info['commands'] = np.zeros(3)
-            else:
-                env_info['commands'] = np.zeros(3)
+                for env_idx in env_indices:
+                    if env_idx >= self.n_envs:
+                        continue
+                        
+                    # Extract environment info
+                    env_info = {}
+                    if isinstance(infos, dict):
+                        env_info = infos
+                    elif hasattr(infos, '__len__') and len(infos) > env_idx:
+                        env_info = infos[env_idx] if isinstance(infos[env_idx], dict) else {}
+                        
+                    # Extract robot-specific information from config
+                    robot_cfg = analyzer_cfg.get('robot_config', {})
+                    cmd_vel_dims = robot_cfg.get('cmd_vel_dims', [0, 1, 2])
+                    
+                    # Get command from environment or extract from observation
+                    if hasattr(self.env, 'get_commands'):
+                        try:
+                            commands = self.env.get_commands()
+                            if commands is not None:
+                                env_info['commands'] = commands[env_idx].cpu().numpy()
+                        except:
+                            # Fallback: extract from observation if possible
+                            current_obs = next_obs[env_idx].cpu().numpy()
+                            if len(current_obs) >= max(cmd_vel_dims) + 1:
+                                env_info['commands'] = current_obs[cmd_vel_dims]
+                            else:
+                                env_info['commands'] = np.zeros(3)
+                    else:
+                        env_info['commands'] = np.zeros(3)
 
-            # Analyze trajectory with analyzer
-            analyzer.analyze_step(
-                step_idx=step_idx,
-                obs_history=obs_history,
-                action_traj=action_traj,
-                state_traj=state_traj,
-                executed_action=actions,
-                reward=rewards[0].item(),  # First environment reward
-                env_info=env_info,
-                inference_time=inference_time
-            )
+                    # Analyze trajectory for this environment
+                    analyzer.analyze_step(
+                        step_idx=step_idx,
+                        obs_history=obs_history[env_idx:env_idx+1],  # Single env slice
+                        action_traj=action_traj[env_idx:env_idx+1],
+                        state_traj=state_traj[env_idx:env_idx+1],
+                        executed_action=actions[env_idx:env_idx+1],
+                        reward=rewards[env_idx].item(),
+                        env_info=env_info,
+                        inference_time=inference_time
+                    )
+                    
+                    # Only analyze one environment unless analyze_all_envs is True
+                    if not analyze_all_envs:
+                        break
 
             # Update observation history (FIFO)
             obs_history = torch.cat([obs_history[:, 1:, :], next_obs.unsqueeze(1)], dim=1)
@@ -210,8 +244,8 @@ class LeggedGymRunner(BaseLowdimRunner):
                     current_rewards[idx] = 0
                     current_lengths[idx] = 0
 
-                    # Notify analyzer of episode reset (for first env)
-                    if idx == 0:
+                    # Notify analyzer of episode reset (for analyzed environment)
+                    if analyzer and (analyze_all_envs or idx == analyze_env_idx):
                         analyzer.episode_reset()
 
                     # Print episode summary
@@ -222,14 +256,21 @@ class LeggedGymRunner(BaseLowdimRunner):
 
             pbar.update(1)
             
-            # Check for training issues periodically
-            if step_idx > 0 and step_idx % 200 == 0:
-                issues = diagnose_training_issues(analyzer)
-                if issues:
-                    print(f"\n⚠️  DETECTED TRAINING ISSUES AT STEP {step_idx}:")
-                    for issue_type, description in issues.items():
-                        print(f"  - {issue_type}: {description}")
-                    print("  See full recommendations below.\n")
+            # Check for training issues periodically (if analyzer enabled)
+            if analyzer:
+                issue_cfg = analyzer_cfg.get('issue_detection', {})
+                if (issue_cfg.get('enabled', True) and 
+                    step_idx > 0 and 
+                    step_idx % issue_cfg.get('check_interval', 200) == 0):
+                    
+                    issues = diagnose_training_issues(analyzer)
+                    if issues:
+                        print(f"\n⚠️  DETECTED TRAINING ISSUES AT STEP {step_idx}:")
+                        for issue_type, description in issues.items():
+                            print(f"  - {issue_type}: {description}")
+                        
+                        if issue_cfg.get('print_recommendations', True):
+                            print("  See full recommendations below.\n")
 
         pbar.close()
 
@@ -239,9 +280,13 @@ class LeggedGymRunner(BaseLowdimRunner):
                 episode_rewards.append(current_rewards[i].item())
                 episode_lengths.append(current_lengths[i].item())
 
-        # Get final diagnostic summary
-        analyzer_summary = analyzer.get_diagnostic_summary()
-        final_issues = diagnose_training_issues(analyzer)
+        # Get final diagnostic summary and issues (if analyzer enabled)
+        analyzer_summary = {}
+        final_issues = {}
+        
+        if analyzer:
+            analyzer_summary = analyzer.get_diagnostic_summary()
+            final_issues = diagnose_training_issues(analyzer)
 
         # Aggregate results
         results = {
@@ -251,7 +296,8 @@ class LeggedGymRunner(BaseLowdimRunner):
             "mean_episode_length": np.mean(episode_lengths) if episode_lengths else 0.0,
             "num_episodes": len(episode_rewards),
             "std_episode_reward": np.std(episode_rewards) if episode_rewards else 0.0,
-            "analyzer_summary": analyzer_summary
+            "analyzer_summary": analyzer_summary,
+            "analyzer_enabled": analyzer is not None
         }
 
         print("\n" + "="*70)
@@ -259,34 +305,41 @@ class LeggedGymRunner(BaseLowdimRunner):
         print(f"  Episodes: {results['num_episodes']}")
         print(f"  Mean Reward: {results['mean_episode_reward']:.2f} ± {results['std_episode_reward']:.2f}")
         print(f"  Mean Length: {results['mean_episode_length']:.1f}")
-        print("\nTRAJECTORY ANALYSIS SUMMARY:")
         
-        if 'inference_time' in analyzer_summary:
-            inf_time = analyzer_summary['inference_time']
-            print(f"  Inference Time: {inf_time['mean']*1000:.1f}ms (±{inf_time['std']*1000:.1f}ms)")
+        if analyzer:
+            print("\nTRAJECTORY ANALYSIS SUMMARY:")
             
-        if 'action_magnitude' in analyzer_summary:
-            act_mag = analyzer_summary['action_magnitude']
-            print(f"  Action Magnitude: {act_mag['mean']:.3f} (±{act_mag['std']:.3f})")
-            
-        if 'velocity_tracking_error' in analyzer_summary:
-            vel_err = analyzer_summary['velocity_tracking_error']
-            print(f"  Velocity Tracking Error: {vel_err['mean']:.3f}m/s (±{vel_err['std']:.3f})")
+            if 'inference_time' in analyzer_summary:
+                inf_time = analyzer_summary['inference_time']
+                print(f"  Inference Time: {inf_time['mean']*1000:.1f}ms (±{inf_time['std']*1000:.1f}ms)")
+                
+            if 'action_magnitude' in analyzer_summary:
+                act_mag = analyzer_summary['action_magnitude']
+                print(f"  Action Magnitude: {act_mag['mean']:.3f} (±{act_mag['std']:.3f})")
+                
+            if 'velocity_tracking_error' in analyzer_summary:
+                vel_err = analyzer_summary['velocity_tracking_error']
+                print(f"  Velocity Tracking Error: {vel_err['mean']:.3f}m/s (±{vel_err['std']:.3f})")
 
-        # Print any detected issues
-        if final_issues:
-            print(f"\n🔍 TRAINING ISSUE DETECTION:")
-            for issue_type, description in final_issues.items():
-                print(f"  ❌ {issue_type}: {description}")
-            
-            print(f"\n📋 RECOMMENDATIONS:")
-            print_training_recommendations()
+            # Print any detected issues
+            if final_issues:
+                print(f"\n🔍 TRAINING ISSUE DETECTION:")
+                for issue_type, description in final_issues.items():
+                    print(f"  ❌ {issue_type}: {description}")
+                
+                issue_cfg = analyzer_cfg.get('issue_detection', {})
+                if issue_cfg.get('print_recommendations', True):
+                    print(f"\n📋 RECOMMENDATIONS:")
+                    print_training_recommendations()
+            else:
+                print(f"\n✅ No major training issues detected!")
         else:
-            print(f"\n✅ No major training issues detected!")
+            print("\n(Trajectory analysis was disabled)")
 
         print("="*70 + "\n")
 
         # Clean up analyzer
-        analyzer.close()
+        if analyzer:
+            analyzer.close()
 
         return results
