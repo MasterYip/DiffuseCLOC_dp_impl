@@ -21,9 +21,11 @@ import click
 import torch
 import json
 from omegaconf import OmegaConf
+import hydra
 
 from diffusion_policy import DIFFUSION_POLICY_ROOT
 from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
+from diffusion_policy.trainer.base_trainer import BaseTrainer
 
 
 @click.command()
@@ -44,183 +46,40 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         click.confirm(f"Output path {output_dir} exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Load configuration
-    cfg = None
+    # Load checkpoint
+    print(f"Loading checkpoint: {checkpoint}")
+    payload = torch.load(checkpoint, map_location='cpu')
+
+    # Load configuration: from file if specified, otherwise from payload
     if config is not None:
-        # Load config from file (similar to train.py)
         print(f"Loading configuration from file: {config}")
         config_path = os.path.join(DIFFUSION_POLICY_ROOT, './config_files', config)
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        
         cfg = OmegaConf.load(config_path)
         OmegaConf.resolve(cfg)
-        print("\nLoaded configuration from file:")
-        print(OmegaConf.to_yaml(cfg))
+        print(f"Using config from file: {config}")
     else:
-        # Try to load config from checkpoint payload (original behavior)
-        print(f"Loading checkpoint: {checkpoint}")
-        payload = torch.load(checkpoint, map_location='cpu')
-        
-        if 'cfg' in payload:
-            cfg = payload['cfg']
-            print("\nLoaded configuration from checkpoint:")
-            print(OmegaConf.to_yaml(cfg))
-        else:
-            print("Warning: No config found in checkpoint and no config file specified")
-
-    # Load checkpoint (reload if we loaded config from file)
-    if config is not None:
-        print(f"Loading checkpoint: {checkpoint}")
-        payload = torch.load(checkpoint, map_location='cpu')
+        print("Using configuration from checkpoint")
+        cfg = payload['cfg']
     
-    # Extract policy weights
-    # FIXME: this the temporary fix for loading policy weights
-    print("Available keys in checkpoint:", payload['state_dicts'].keys() if 'state_dicts' in payload else payload.keys())
+    print("\nLoaded configuration.")
+    # print(OmegaConf.to_yaml(cfg))
+
+    # Initialize trainer (same as train.py)
+    cls = hydra.utils.get_class(cfg._target_)
+    trainer: BaseTrainer = cls(cfg)
     
-    if 'state_dicts' in payload and 'agent' in payload['state_dicts']:
-        # Standard checkpoint format
-        full_state_dict = payload['state_dicts']['agent']
-        
-        # Extract only the actor (policy) weights, removing the 'actor.' prefix
-        policy_state_dict = {}
-        normalizer_state_dict = {}
-        
-        for key, value in full_state_dict.items():
-            if key.startswith('actor.'):
-                # Remove 'actor.' prefix to match the policy structure
-                new_key = key[6:]  # Remove 'actor.' (6 characters)
-                if not new_key.startswith('normalizer.'):
-                    policy_state_dict[new_key] = value
-                else:
-                    # Store normalizer separately
-                    normalizer_state_dict[new_key] = value
-            elif key.startswith('normalizer.'):
-                normalizer_state_dict[key] = value
-            elif not key.startswith('_dummy_variable'):
-                # Direct policy weights without prefix
-                policy_state_dict[key] = value
-                
-        print(f"Extracted {len(policy_state_dict)} policy parameters")
-        print(f"Extracted {len(normalizer_state_dict)} normalizer parameters")
-        
-    elif 'model' in payload:
-        # Direct model state dict
-        policy_state_dict = payload['model']
-    else:
-        raise ValueError("Cannot find model state dict in checkpoint")
-
-    # Create policy from config
-    if cfg is not None:
-        from hydra.utils import instantiate
-        policy = instantiate(cfg.policy.actor)
-        print(f"Created policy from config: {type(policy).__name__}")
-    else:
-        # Fallback: create default DiffuseCLoC
-        from diffusion_policy.modules.diffuse_cloc import DiffuseCLoC
-        from diffusion_policy.backbone.transformer_codiffuse import Transformer
-        
-        print("Creating default DiffuseCLoC policy...")
-        backbone = Transformer(
-            x_horizon=20,
-            y_horizon=20,
-            x_input_dim=384,
-            y_input_dim=29,
-            x_output_dim=384,
-            y_output_dim=29,
-            n_emb=256,
-            n_head=4,
-            n_layer=2,
-            causal_attn=True,
-        )
-        policy = DiffuseCLoC(
-            backbone=backbone,
-            denoising_steps=20,
-            n_past_steps=4,
-            state_emphasis='random_emph_symm',
-        )
-
-    # Load policy weights
-    policy.load_state_dict(policy_state_dict)
-    policy.to(device)
-    policy.eval()
-
-    print(f"\nPolicy loaded on {device}")
-    print(f"Policy type: {type(policy).__name__}")
-
-    # Create BCAgent with proper normalization
-    from diffusion_policy.agent.bc_agent import BCAgent
-    from diffusion_policy.utils.normalizer import LinearNormalizer
+    # Load checkpoint into trainer
+    trainer.load_payload(payload, exclude_keys=None, include_keys=None)
     
-    print("Creating BCAgent with normalization...")
-    bc_agent = BCAgent(actor=policy)
-    
-    # Initialize normalizer from checkpoint if available
-    if 'normalizer' in payload:
-        print("Loading normalizer from checkpoint...")
-        normalizer_dict = payload['normalizer']
-        
-        # Create normalizer from checkpoint data
-        normalizer = {}
-        for key, norm_data in normalizer_dict.items():
-            if isinstance(norm_data, dict) and 'params' in norm_data:
-                # Standard normalizer format
-                params = norm_data['params']
-                norm = LinearNormalizer()
-                norm.fit(params)
-                normalizer[key] = norm
-            else:
-                # Direct tensor format (legacy)
-                norm = LinearNormalizer()
-                if hasattr(norm_data, 'shape'):
-                    # Assume it's normalized data, create identity normalizer
-                    norm.params_dict = {
-                        'input_stats': {'min': torch.zeros_like(norm_data), 'max': torch.ones_like(norm_data)}
-                    }
-                normalizer[key] = norm
-                
-        bc_agent.normalizer = normalizer
-        print(f"Loaded normalizer with keys: {list(normalizer.keys())}")
-        
-    elif normalizer_state_dict:
-        print("Creating normalizer from extracted normalizer weights...")
-        # Try to reconstruct normalizer from state dict
-        normalizer = {}
-        
-        # Group normalizer parameters by type (obs, action)
-        for key, value in normalizer_state_dict.items():
-            if 'obs' in key.lower():
-                if 'obs' not in normalizer:
-                    normalizer['obs'] = LinearNormalizer()
-                # Set normalizer parameters (this is a simplified approach)
-                if 'min' in key:
-                    normalizer['obs']._min = value
-                elif 'max' in key:
-                    normalizer['obs']._max = value
-            elif 'action' in key.lower():
-                if 'action' not in normalizer:
-                    normalizer['action'] = LinearNormalizer()
-                if 'min' in key:
-                    normalizer['action']._min = value
-                elif 'max' in key:
-                    normalizer['action']._max = value
-                    
-        bc_agent.normalizer = normalizer
-        print(f"Reconstructed normalizer with keys: {list(normalizer.keys())}")
-        
-    else:
-        print("Warning: No normalizer found in checkpoint! Creating identity normalizer...")
-        # Create identity normalizer as fallback
-        from diffusion_policy.utils.normalizer import IdentityNormalizer
-        normalizer = {
-            'obs': IdentityNormalizer(),
-            'action': IdentityNormalizer()
-        }
-        bc_agent.normalizer = normalizer
-
-    # Set device for BCAgent
+    # Get bc_agent from trainer
+    bc_agent = trainer.agent
     bc_agent.to(device)
-    print(f"BCAgent created and moved to {device}")
+    bc_agent.eval()
+    
+    print(f"BCAgent loaded and moved to {device}")
+    print(f"Policy type: {type(bc_agent.actor).__name__}")
 
     # Create environment runner
     env_runner = LeggedGymRunner(
@@ -233,7 +92,7 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         device=device,
     )
 
-    # Run evaluation with BCAgent (includes proper normalization)
+    # Run evaluation with BCAgent
     print(f"\nStarting evaluation...")
     print(f"  Task: {task}")
     print(f"  Num envs: {num_envs}")
@@ -255,11 +114,10 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
     print(f"\nResults saved to: {output_file}")
 
     # Save configuration used for evaluation
-    if cfg is not None:
-        config_output_file = os.path.join(output_dir, 'eval_config.yaml')
-        with open(config_output_file, 'w') as f:
-            OmegaConf.save(cfg, f)
-        print(f"Config saved to: {config_output_file}")
+    config_output_file = os.path.join(output_dir, 'eval_config.yaml')
+    with open(config_output_file, 'w') as f:
+        OmegaConf.save(cfg, f)
+    print(f"Config saved to: {config_output_file}")
 
     # Save summary
     summary_file = os.path.join(output_dir, 'eval_summary.txt')
@@ -267,7 +125,7 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         f.write(f"Evaluation Summary\n")
         f.write(f"==================\n\n")
         f.write(f"Checkpoint: {checkpoint}\n")
-        f.write(f"Config Source: {'File (' + config + ')' if config else 'Checkpoint payload'}\n")
+        f.write(f"Config: {config if config else 'from checkpoint'}\n")
         f.write(f"Task: {task}\n")
         f.write(f"Num Envs: {num_envs}\n")
         f.write(f"Max Steps: {max_steps}\n")

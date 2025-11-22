@@ -50,7 +50,7 @@ class BCAgent(BaseAgent):
             # global_body_pos, root_rot_global = self.dataset_class.state_unnormalize(state_pred.clone(), obs_dict['global_root'], return_rot=True)
             # body_pos = self.dataset_class.state_unnormalize(state_pred.clone(), return_rot=False)
             
-            return action_pred, None, None #global_body_pos, body_pos #, #state_pred #body_pos
+            return action_pred, state_pred, None #global_body_pos, body_pos #, #state_pred #body_pos
         
         elif isinstance(self.actor, DiffusionActor):
             naction_pred = output
