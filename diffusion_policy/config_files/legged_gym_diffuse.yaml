@@ -36,7 +36,7 @@ ema:
 
 exp_name: null
 output_dir: "./outputs/"
-dataset_dir: "/home/user/CodeSpace/Diffusion/cmp_diffusion_policy/diffusion_diffuse_cloc/data/" # "/home/haytham/ProtoMotions/"
+dataset_dir: "/home/user/CodeSpace/Diffusion/cmp_diffusion_policy/diffusion_diffuse_cloc/data/legged_gym/" # "/home/haytham/ProtoMotions/"
 
 logging:
   group: null
@@ -83,7 +83,7 @@ policy:
 
     denoising_steps: 20 # 20
     predict_epsilon: false
-    denoised_clip_value: 1.0
+    denoised_clip_value: 10.0
     action_weight_schedule: constant-to-8
     clean_past_state: true
     clean_past_action: false
@@ -91,7 +91,7 @@ policy:
     n_past_steps: 4
     # state_emphasis: random_emph_symm
     # FIXME:
-    state_emphasis: rand
+    state_emphasis: same
     state_proj: true
 
 dataset:
@@ -113,7 +113,7 @@ dataset:
   zarr_path: elspider_dataset.zarr # Update this to your actual zarr file
 
 training:
-  checkpoint_every: 10
+  checkpoint_every: 1
   debug: false
   device: cuda:0
   gradient_accumulate_every: 1

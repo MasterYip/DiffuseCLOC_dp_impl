@@ -43,7 +43,7 @@ python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
 
 ```bash
 python eval.py \
-    --checkpoint outputs/November-20-20-42-53-legged_gym_diffuse/checkpoints/50.ckpt \
+    --checkpoint outputs/November-22-15-17-16-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
