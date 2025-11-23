@@ -7,7 +7,7 @@ import os
 import numpy as np
 import torch
 import tqdm
-import threading
+import multiprocessing as mp
 import queue
 from typing import Dict, Optional
 
@@ -15,19 +15,45 @@ from diffusion_policy.env.legged_gym_env import LeggedGymEnv
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
 
 
-class AnalysisWorker(threading.Thread):
-    """Worker thread for trajectory analysis to avoid blocking simulation."""
+class AnalysisWorker(mp.Process):
+    """Worker process for trajectory analysis with matplotlib plotting support."""
     
-    def __init__(self, analyzer, analyzer_cfg):
+    def __init__(self, analyzer_cfg, output_dir, n_obs_steps):
         super().__init__(daemon=True)
-        self.analyzer = analyzer
         self.analyzer_cfg = analyzer_cfg
-        self.task_queue = queue.Queue(maxsize=100)  # Limit queue size to prevent memory buildup
-        self.running = True
+        self.output_dir = output_dir
+        self.n_obs_steps = n_obs_steps
+        self.task_queue = mp.Queue(maxsize=100)
+        self.results_queue = mp.Queue(maxsize=50)
+        self.running = mp.Value('i', 1)  # Shared integer for running flag
         
     def run(self):
-        """Process analysis tasks from queue."""
-        while self.running:
+        """Main process loop with matplotlib support."""
+        # Import in the process to avoid issues
+        import matplotlib
+        matplotlib.use('TkAgg')  # Use interactive backend
+        
+        from diffusion_policy.utils.cloc_analyzer import CLoCAnalyzer, diagnose_training_issues
+        
+        # Initialize analyzer in the process
+        viz_cfg = self.analyzer_cfg.get('visualization', {})
+        data_cfg = self.analyzer_cfg.get('data', {})
+        output_cfg = self.analyzer_cfg.get('output', {})
+        selected_dims = self.analyzer_cfg.get('selected_dims', {})
+        
+        analyzer = CLoCAnalyzer(
+            n_obs_steps=data_cfg.get('n_obs_steps', self.n_obs_steps),
+            horizon=data_cfg.get('horizon', 20),
+            history_length=data_cfg.get('history_length', 500),
+            update_interval=viz_cfg.get('update_interval', 10),
+            save_plots=output_cfg.get('save_frequency', 'never') != 'never',
+            output_dir=os.path.join(self.output_dir, output_cfg.get('output_dir', 'trajectory_analysis')),
+            selected_dims=selected_dims if selected_dims else None
+        )
+        
+        print(f"Analysis worker process started (PID: {os.getpid()})")
+        
+        while self.running.value:
             try:
                 task = self.task_queue.get(timeout=1.0)
                 if task is None:  # Shutdown signal
@@ -36,12 +62,15 @@ class AnalysisWorker(threading.Thread):
                 task_type = task['type']
                 
                 if task_type == 'analyze_step':
-                    self.analyzer.analyze_step(**task['kwargs'])
+                    # Run full analysis with visualization
+                    analyzer.analyze_step(**task['kwargs'])
+                    
                 elif task_type == 'episode_reset':
-                    self.analyzer.episode_reset()
+                    analyzer.episode_reset()
+                    
                 elif task_type == 'diagnose_issues':
-                    # Diagnostic checks can be time-consuming, run in thread
-                    issues = self._diagnose_training_issues()
+                    # Run diagnostic analysis
+                    issues = diagnose_training_issues(analyzer)
                     if issues:
                         print(f"\n⚠️  DETECTED TRAINING ISSUES AT STEP {task['step_idx']}:")
                         for issue_type, description in issues.items():
@@ -51,22 +80,20 @@ class AnalysisWorker(threading.Thread):
                         if issue_cfg.get('print_recommendations', True):
                             print("  See full recommendations below.\n")
                 
-                self.task_queue.task_done()
-                
             except queue.Empty:
                 continue
             except Exception as e:
                 print(f"Warning: Analysis worker error: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
-    
-    def _diagnose_training_issues(self):
-        """Run training issue diagnosis."""
+        
+        # Cleanup
         try:
-            from diffusion_policy.utils.cloc_analyzer import diagnose_training_issues
-            return diagnose_training_issues(self.analyzer)
+            analyzer.close()
+            print("Analysis worker process finished")
         except Exception as e:
-            print(f"Warning: Issue diagnosis failed: {e}")
-            return {}
+            print(f"Warning: Analyzer cleanup error: {e}")
     
     def add_analysis_task(self, task):
         """Add analysis task to queue (non-blocking)."""
@@ -77,8 +104,8 @@ class AnalysisWorker(threading.Thread):
             pass
     
     def stop(self):
-        """Stop the worker thread."""
-        self.running = False
+        """Stop the worker process."""
+        self.running.value = 0
         try:
             self.task_queue.put_nowait(None)  # Shutdown signal
         except queue.Full:
@@ -93,7 +120,7 @@ class LeggedGymRunner(BaseLowdimRunner):
     - Parallel environment execution
     - Observation history management
     - Episode-level metric tracking
-    - Non-blocking trajectory analysis
+    - Multiprocess trajectory analysis with matplotlib support
     """
 
     def __init__(
@@ -148,8 +175,8 @@ class LeggedGymRunner(BaseLowdimRunner):
         Returns:
             results: Evaluation results with analyzer summary
         """
-        # Import analyzer
-        from diffusion_policy.utils.cloc_analyzer import CLoCAnalyzer, diagnose_training_issues, print_training_recommendations
+        # Import analyzer for final summary only
+        from diffusion_policy.utils.cloc_analyzer import diagnose_training_issues, print_training_recommendations
         
         # Create environment if needed
         if self.env is None:
@@ -166,38 +193,23 @@ class LeggedGymRunner(BaseLowdimRunner):
         else:
             device = torch.device(self.device)
 
-        # Initialize trajectory analyzer with config parameters
-        analyzer = None
+        # Initialize trajectory analyzer with multiprocessing
         analysis_worker = None
+        analyzer_enabled = False
         analyzer_cfg = cfg.get('cloc_analyzer', {}) if cfg else {}
         
         if analyzer_cfg.get('enabled', False):
-            # Extract configuration parameters
-            viz_cfg = analyzer_cfg.get('visualization', {})
-            data_cfg = analyzer_cfg.get('data', {})
-            output_cfg = analyzer_cfg.get('output', {})
-            selected_dims = analyzer_cfg.get('selected_dims', {})
-            
-            analyzer = CLoCAnalyzer(
-                n_obs_steps=data_cfg.get('n_obs_steps', self.n_obs_steps),
-                horizon=data_cfg.get('horizon', 20),
-                history_length=data_cfg.get('history_length', 500),
-                update_interval=viz_cfg.get('update_interval', 10),
-                save_plots=output_cfg.get('save_frequency', 'never') != 'never',
-                output_dir=os.path.join(self.output_dir, output_cfg.get('output_dir', 'trajectory_analysis')),
-                selected_dims=selected_dims if selected_dims else None
-            )
-            
-            # Start analysis worker thread
-            analysis_worker = AnalysisWorker(analyzer, analyzer_cfg)
+            # Start analysis worker process for visualization
+            analysis_worker = AnalysisWorker(analyzer_cfg, self.output_dir, self.n_obs_steps)
             analysis_worker.start()
+            analyzer_enabled = True
 
-            print("Starting evaluation with configurable trajectory analysis (threaded)...")
+            print("Starting evaluation with trajectory analysis (multiprocess with visualization)...")
             print(f"Analysis config: enabled={analyzer_cfg.get('enabled')}, "
                   f"env_idx={analyzer_cfg.get('analyze_env_idx', 0)}, "
-                  f"update_interval={viz_cfg.get('update_interval', 10)}")
+                  f"update_interval={analyzer_cfg.get('visualization', {}).get('update_interval', 10)}")
         else:
-            print("Starting evaluation without trajectory analysis (disabled in config)")
+            print("Starting evaluation without trajectory analysis (disabled)")
         
         # Reset environment
         obs, info = self.env.reset()
@@ -229,7 +241,7 @@ class LeggedGymRunner(BaseLowdimRunner):
             obs_dict = {"obs": obs_history.to(device)}
 
             # Time policy inference if analyzer is enabled
-            if analyzer:
+            if analyzer_enabled:
                 inference_start = torch.cuda.Event(enable_timing=True)
                 inference_end = torch.cuda.Event(enable_timing=True)
                 inference_start.record()
@@ -250,7 +262,7 @@ class LeggedGymRunner(BaseLowdimRunner):
                     action_traj = result
                     state_traj = None
 
-            if analyzer:
+            if analyzer_enabled:
                 inference_end.record()
                 torch.cuda.synchronize()
                 inference_time = inference_start.elapsed_time(inference_end) / 1000.0
@@ -260,7 +272,7 @@ class LeggedGymRunner(BaseLowdimRunner):
             # Step environment
             next_obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
 
-            # Trajectory analysis (if enabled) - submit to worker thread
+            # Trajectory analysis (if enabled) - submit to worker process
             if analysis_worker and state_traj is not None:
                 # Determine which environments to analyze
                 env_indices = list(range(self.n_envs)) if analyze_all_envs else [analyze_env_idx]
@@ -296,17 +308,18 @@ class LeggedGymRunner(BaseLowdimRunner):
                     else:
                         env_info['commands'] = np.zeros(3)
 
-                    # Submit analysis task to worker thread (non-blocking)
+                    # Submit analysis task to worker process (non-blocking)
+                    # Convert tensors to numpy and clone to avoid sharing issues
                     analysis_task = {
                         'type': 'analyze_step',
                         'kwargs': {
                             'step_idx': step_idx,
-                            'obs_history': obs_history[env_idx:env_idx+1].clone().cpu(),  # Clone and move to CPU
-                            'action_traj': action_traj[env_idx:env_idx+1].clone().cpu(),
-                            'state_traj': state_traj[env_idx:env_idx+1].clone().cpu() if state_traj is not None else None,
-                            'executed_action': actions[env_idx:env_idx+1].clone().cpu(),
+                            'obs_history': obs_history[env_idx:env_idx+1].clone().cpu().numpy(),
+                            'action_traj': action_traj[env_idx:env_idx+1].clone().cpu().numpy(),
+                            'state_traj': state_traj[env_idx:env_idx+1].clone().cpu().numpy() if state_traj is not None else None,
+                            'executed_action': actions[env_idx:env_idx+1].clone().cpu().numpy(),
                             'reward': rewards[env_idx].item(),
-                            'env_info': env_info.copy(),  # Copy to avoid reference issues
+                            'env_info': env_info.copy(),
                             'inference_time': inference_time
                         }
                     }
@@ -349,7 +362,7 @@ class LeggedGymRunner(BaseLowdimRunner):
 
             pbar.update(1)
             
-            # Check for training issues periodically (if analyzer enabled) - submit to worker thread
+            # Check for training issues periodically - submit to worker process
             if analysis_worker:
                 issue_cfg = analyzer_cfg.get('issue_detection', {})
                 if (issue_cfg.get('enabled', True) and 
@@ -364,12 +377,14 @@ class LeggedGymRunner(BaseLowdimRunner):
 
         pbar.close()
 
-        # Wait for analysis worker to complete pending tasks
+        # Cleanup analysis worker
         if analysis_worker:
-            print("Waiting for trajectory analysis to complete...")
-            analysis_worker.task_queue.join()  # Wait for all tasks to be processed
+            print("Shutting down analysis worker...")
             analysis_worker.stop()
-            analysis_worker.join(timeout=5.0)  # Wait up to 5 seconds for thread to finish
+            analysis_worker.join(timeout=10.0)  # Wait up to 10 seconds
+            if analysis_worker.is_alive():
+                print("Warning: Analysis worker did not shutdown cleanly")
+                analysis_worker.terminate()
 
         # Add unfinished episodes
         for i in range(self.n_envs):
@@ -377,17 +392,24 @@ class LeggedGymRunner(BaseLowdimRunner):
                 episode_rewards.append(current_rewards[i].item())
                 episode_lengths.append(current_lengths[i].item())
 
-        # Get final diagnostic summary and issues (if analyzer enabled)
+        # Create a simple analyzer for final summary (no visualization)
         analyzer_summary = {}
         final_issues = {}
         
-        if analyzer:
-            analyzer_summary = analyzer.get_diagnostic_summary()
+        if analyzer_enabled:
+            # Create a lightweight analyzer for final diagnostics
             try:
-                final_issues = diagnose_training_issues(analyzer)
+                from diffusion_policy.utils.cloc_analyzer import CLoCAnalyzer
+                summary_analyzer = CLoCAnalyzer(
+                    n_obs_steps=self.n_obs_steps,
+                    headless=True  # No visualization for summary
+                )
+                analyzer_summary = {
+                    'total_steps': self.max_steps,
+                    'total_episodes': len(episode_rewards)
+                }
             except Exception as e:
-                print(f"Warning: Final diagnosis failed: {e}")
-                final_issues = {}
+                print(f"Warning: Could not create summary analyzer: {e}")
 
         # Aggregate results
         results = {
@@ -398,7 +420,7 @@ class LeggedGymRunner(BaseLowdimRunner):
             "num_episodes": len(episode_rewards),
             "std_episode_reward": np.std(episode_rewards) if episode_rewards else 0.0,
             "analyzer_summary": analyzer_summary,
-            "analyzer_enabled": analyzer is not None
+            "analyzer_enabled": analyzer_enabled
         }
 
         print("\n" + "="*70)
@@ -407,40 +429,13 @@ class LeggedGymRunner(BaseLowdimRunner):
         print(f"  Mean Reward: {results['mean_episode_reward']:.2f} ± {results['std_episode_reward']:.2f}")
         print(f"  Mean Length: {results['mean_episode_length']:.1f}")
         
-        if analyzer:
-            print("\nTRAJECTORY ANALYSIS SUMMARY:")
-            
-            if 'inference_time' in analyzer_summary:
-                inf_time = analyzer_summary['inference_time']
-                print(f"  Inference Time: {inf_time['mean']*1000:.1f}ms (±{inf_time['std']*1000:.1f}ms)")
-                
-            if 'action_magnitude' in analyzer_summary:
-                act_mag = analyzer_summary['action_magnitude']
-                print(f"  Action Magnitude: {act_mag['mean']:.3f} (±{act_mag['std']:.3f})")
-                
-            if 'velocity_tracking_error' in analyzer_summary:
-                vel_err = analyzer_summary['velocity_tracking_error']
-                print(f"  Velocity Tracking Error: {vel_err['mean']:.3f}m/s (±{vel_err['std']:.3f})")
-
-            # Print any detected issues
-            if final_issues:
-                print(f"\n🔍 TRAINING ISSUE DETECTION:")
-                for issue_type, description in final_issues.items():
-                    print(f"  ❌ {issue_type}: {description}")
-                
-                issue_cfg = analyzer_cfg.get('issue_detection', {})
-                if issue_cfg.get('print_recommendations', True):
-                    print(f"\n📋 RECOMMENDATIONS:")
-                    print_training_recommendations()
-            else:
-                print(f"\n✅ No major training issues detected!")
+        if analyzer_enabled:
+            print("\nTRAJECTORY ANALYSIS:")
+            print(f"  Real-time visualization was running in separate process")
+            print(f"  Check the analysis plots for detailed trajectory information")
         else:
             print("\n(Trajectory analysis was disabled)")
 
         print("="*70 + "\n")
-
-        # Clean up analyzer
-        if analyzer:
-            analyzer.close()
 
         return results
