@@ -138,7 +138,7 @@ checkpoint:
 # CLoCAnalyzer Configuration for Real-time Trajectory Analysis
 cloc_analyzer:
   # Enable/disable trajectory analysis during evaluation
-  enabled: false                     # Set to false to disable analysis completely
+  enabled: true                     # Set to false to disable analysis completely
   
   # Environment selection for analysis
   analyze_env_idx: 0                # Which environment to analyze (0-based index)
@@ -146,7 +146,7 @@ cloc_analyzer:
   
   # Visualization settings
   visualization:
-    update_interval: 5              # Update plots every N steps
+    update_interval: 10              # Update plots every N steps
     save_plots: false                # Save episode analysis plots
     show_realtime: true             # Show matplotlib window during eval
     plot_size: [24, 8]            # Figure size [width, height] in inches
@@ -160,15 +160,15 @@ cloc_analyzer:
   # Output settings
   output:
     output_dir: "./trajectory_analysis/"  # Directory for saved plots
-    save_frequency: "episode"       # Save plots: "never", "episode", "periodic"
+    save_frequency: "never"       # Save plots: "never", "episode", "periodic"
     save_interval: 50               # Save every N steps (if periodic)
     
   # Dimension selection for visualization
   selected_dims:
     # State dimensions to visualize (legged locomotion specific)
-    obs: [0, 1, 2, 3, 4, 5]         # Base position + orientation
-    action: [0, 1, 2, 3, 4, 5]      # Hip joints (left/right)
-    state: [0, 1, 2, 3, 4, 5]       # Same as obs for consistency
+    obs: [12,13,14]         # Base position + orientation
+    action: [0,1,2]      # Hip joints (left/right)
+    state: [12,13,14]       # Same as obs for consistency
     
   # Diagnostic thresholds
   diagnostics:
