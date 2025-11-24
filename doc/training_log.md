@@ -1,12 +1,30 @@
 ### Basic Training
 
+**Generate Dataset**
+
+First, generate a dataset from legged gym environments:
+
+```bash
+cd <REPO_ROOT_DIR>
+python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
+  --output "./diffusion_policy/data/legged_gym/elspider_dataset.zarr" \
+  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/plane_walk_300_jit.pt" \
+  --task_name "elspider_air_flat" \
+  --n_episodes 4000 \
+  --episode_steps 500 \
+  --num_envs 1000 \
+  --headless
+```
+
+**Training**
+
 ```bash
 mamba activate pdplanner
 # Train with default configuration
 python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
 ```
 
-**Continue traning**
+**Continue training**
 
 Set `resume=True` and `resume_path` in config yaml.
 
@@ -29,6 +47,7 @@ python eval.py \
 ### Log
 
 #### 20251117 ElSpiderAir Don't walk [SOLVED]
+
 1. Small size dataset - elspider can walk | large dataset - elspider stay still
 2. Looks like this has something to do with the command.
 
