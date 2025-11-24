@@ -164,9 +164,9 @@ class OfflineTrainer(BaseTrainer):
 
         # resume training
         if cfg.training.resume:
-            lastest_ckpt_path = pathlib.Path(cfg.training.resume_path).joinpath('checkpoints', 'latest.ckpt')
+            # lastest_ckpt_path = pathlib.Path(cfg.training.resume_path).joinpath('checkpoints', 'latest.ckpt')
 
-            payload = self.load_wandb_checkpoint(lastest_ckpt_path)
+            payload = self.load_wandb_checkpoint(cfg.training.resume_path)
             # import ipdb;ipdb.set_trace()
             self.load_payload(payload)
 

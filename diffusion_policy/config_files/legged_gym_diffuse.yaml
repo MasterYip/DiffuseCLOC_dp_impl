@@ -123,7 +123,7 @@ training:
   max_val_steps: null
   num_epochs: 1000
   resume: false
-  resume_path: "/home/takaraet/Projects/DiffuseCloC/outputs/June-24-13-56-45-joint_diffuse" # /home/takaraet/Projects/DiffuseCloC/outputs/June-24-13-54-10-joint_diffuse'
+  resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" # /home/takaraet/Projects/DiffuseCloC/outputs/June-24-13-54-10-joint_diffuse'
   rollout_every: 10
   rollout_steps: 200
   sample_every: 3
@@ -138,7 +138,7 @@ checkpoint:
 # CLoCAnalyzer Configuration for Real-time Trajectory Analysis
 cloc_analyzer:
   # Enable/disable trajectory analysis during evaluation
-  enabled: true                     # Set to false to disable analysis completely
+  enabled: false                     # Set to false to disable analysis completely
   
   # Environment selection for analysis
   analyze_env_idx: 0                # Which environment to analyze (0-based index)

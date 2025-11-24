@@ -1,8 +1,18 @@
 ### Basic Training
 
 ```bash
+mamba activate pdplanner
 # Train with default configuration
 python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
+```
+
+**Continue traning**
+
+Set `resume=True` and `resume_path` in config yaml.
+
+```yaml
+resume: true
+resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" # wandb run path
 ```
 
 ### Eval

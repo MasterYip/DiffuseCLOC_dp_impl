@@ -134,6 +134,7 @@ class BaseTrainer:
         
         path = pathlib.Path("checkpoints").joinpath(f'{tag}.ckpt')
         api = wandb.Api()
+        print("Resume from run:", run_path)
         wandb_run = api.run(run_path)
         file = wandb_run.file(str(path))
 
