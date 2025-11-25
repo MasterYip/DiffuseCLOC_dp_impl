@@ -19,7 +19,7 @@ resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" #
 
 ```bash
 python eval.py \
-    --checkpoint outputs/November-22-17-36-52-legged_gym_diffuse/checkpoints/latest.ckpt \
+    --checkpoint outputs/November-24-21-04-01-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
@@ -34,3 +34,6 @@ python eval.py \
 
 Cause:
 **Normalizer(bc_agent) not correctly set.**
+
+#### 20251122 ElSpiderAir Walk Slow [PARTIALLY SOLVED]
+The collected dataset are not slow, but the trained model walks slow.
