@@ -12,8 +12,9 @@ python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
   --task_name "elspider_air_flat" \
   --n_episodes 4000 \
   --episode_steps 500 \
+  --n_obs_steps 8 \
   --num_envs 1000 \
-  --headless
+  --headless \
 ```
 
 **Training**
@@ -54,5 +55,10 @@ python eval.py \
 Cause:
 **Normalizer(bc_agent) not correctly set.**
 
-#### 20251122 ElSpiderAir Walk Slow [PARTIALLY SOLVED]
+#### 20251122 ElSpiderAir Walk Slow [partially SOLVED]
 The collected dataset are not slow, but the trained model walks slow.
+
+It is also slower than the model trained with diffuse loco.
+
+Cause:
+1. **Eval time is not real time.**
