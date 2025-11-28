@@ -62,3 +62,5 @@ It is also slower than the model trained with diffuse loco.
 
 Cause:
 1. **Eval time is not real time.**
+
+#### 20251118 Datacollection: should turn off push_robots

@@ -118,6 +118,7 @@ class LeggedGymRunner(BaseLowdimRunner):
         device: Optional[str] = None,
         fps: int = 50,
         tqdm_interval_sec: float = 5.0,
+        realtime_mode: bool = False,  # Add realtime mode option
         **kwargs
     ):
         """
@@ -133,6 +134,7 @@ class LeggedGymRunner(BaseLowdimRunner):
             device: Device for policy inference (uses policy device if None)
             fps: Frames per second for visualization
             tqdm_interval_sec: Progress bar update interval
+            realtime_mode: If True, run in realtime with timing constraints
         """
         super().__init__(output_dir)
 
@@ -144,6 +146,7 @@ class LeggedGymRunner(BaseLowdimRunner):
         self.device = device
         self.fps = fps
         self.tqdm_interval_sec = tqdm_interval_sec
+        self.realtime_mode = realtime_mode
 
         # Environment created lazily in run() to avoid issues during training
         self.env = None
@@ -259,8 +262,22 @@ class LeggedGymRunner(BaseLowdimRunner):
         analyze_env_idx = analyzer_cfg.get('analyze_env_idx', 0) if analyzer_cfg else 0
         analyze_all_envs = analyzer_cfg.get('analyze_all_envs', False) if analyzer_cfg else False
 
+        # Realtime management variables
+        realtime_factor_window = []
+        realtime_factor_window_size = 50
+        last_print_time = time.time()
+        print_interval = 2.0  # Print realtime factor every 2 seconds
+        env_dt = getattr(self.env, 'dt', 0.02)  # Default to 20ms if dt not available
+        
+        if self.realtime_mode:
+            print(f"Running in realtime mode (target dt={env_dt:.4f}s)")
+        else:
+            print("Running at maximum speed (no realtime constraints)")
+
         # Evaluation loop
         for step_idx in range(self.max_steps):
+            step_start_time = time.time()
+            
             # Prepare observation dict for BCAgent (with proper normalization)
             obs_dict = {"obs": obs_history.to(device)}
 
@@ -397,6 +414,35 @@ class LeggedGymRunner(BaseLowdimRunner):
                               f"Mean reward: {np.mean(episode_rewards[-10:]):.2f}")
 
             pbar.update(1)
+            
+            # Realtime management
+            if self.realtime_mode:
+                step_end_time = time.time()
+                step_duration = step_end_time - step_start_time
+                
+                # Calculate realtime factor
+                realtime_factor = env_dt / step_duration if step_duration > 0 else float('inf')
+                realtime_factor_window.append(realtime_factor)
+                
+                # Maintain window size
+                if len(realtime_factor_window) > realtime_factor_window_size:
+                    realtime_factor_window.pop(0)
+                
+                # Print realtime factor periodically
+                current_time = time.time()
+                if current_time - last_print_time >= print_interval:
+                    avg_realtime_factor = np.mean(realtime_factor_window)
+                    min_realtime_factor = np.min(realtime_factor_window)
+                    max_realtime_factor = np.max(realtime_factor_window)
+                    print(f"Step {step_idx}: Realtime factor: {avg_realtime_factor:.2f}x "
+                          f"(min: {min_realtime_factor:.2f}x, max: {max_realtime_factor:.2f}x)")
+                    last_print_time = current_time
+                
+                # Sleep to maintain realtime if computation was faster than env_dt
+                sleep_time = env_dt - step_duration
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            # If not realtime mode, run as fast as possible (no sleep)
             
             # Check for training issues periodically (send to analyzer process)
             if analyzer_enabled:
