@@ -90,6 +90,7 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         n_obs_steps=n_obs_steps,
         headless=headless,
         device=device,
+        realtime_mode=True
     )
 
     # Run evaluation with BCAgent

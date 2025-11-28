@@ -10,6 +10,7 @@ import tqdm
 import multiprocessing as mp
 import queue
 import atexit
+import time
 from typing import Dict, Optional
 
 from diffusion_policy.env.legged_gym_env import LeggedGymEnv
