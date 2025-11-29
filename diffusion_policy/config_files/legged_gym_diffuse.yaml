@@ -13,7 +13,7 @@ data_collection:
   perfect_expert_only: true
 
 dataloader:
-  batch_size: 1024 #256 #128
+  batch_size: 1536 #256 #128
   num_workers: 1
   persistent_workers: true
   pin_memory: true
@@ -66,8 +66,8 @@ policy:
     _target_: diffusion_policy.modules.diffuse_cloc.DiffuseCLoC
     backbone:
       _target_: diffusion_policy.backbone.transformer_codiffuse.Transformer
-      x_horizon: 12 # 36
-      y_horizon: 12
+      x_horizon: 36 # 36
+      y_horizon: 36
       x_input_dim: 66 #384 #384 #114 #198 #114 #198 #192 #192 # 198 #204 #192 #201 #192
       y_input_dim: 18
       x_output_dim: 66 #384 #384 #114 #198 #114 #198 #192 # 192 #198 #204 #192 #201 #192
