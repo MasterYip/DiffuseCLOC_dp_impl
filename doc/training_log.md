@@ -38,7 +38,7 @@ resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" #
 
 ```bash
 python eval.py \
-    --checkpoint outputs/November-28-21-31-09-legged_gym_diffuse/checkpoints/latest.ckpt \
+    --checkpoint outputs/November-29-11-15-19-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
@@ -67,7 +67,7 @@ It is also slower than the model trained with diffuse loco.
 2. Train elair_flat from collected dataset with x&y horizon=36. The model walks slow at horizon=36. It doesn't walk if set to other horizon.
 
 Summary:
-1. If train at horizon $h_0$, it walks slow at horizon $h <= h_0$, and walk faster at horizon $h > h_0$. (maybe $h_0$ should less than 36)
+1. If train at horizon $h_0$, it walks slow at horizon $h <= h_0$, and walk faster at horizon $h > h_0$. (**guess**: only when episode length is short, long eps may leads to overfitting, which can't walk at other horizon)
 
 
 #### 20251118 Datacollection: should turn off push_robots?

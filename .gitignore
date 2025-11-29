@@ -6,3 +6,6 @@
 /outputs
 *.out
 !checkpoints/**
+
+wandb
+.sweep_id

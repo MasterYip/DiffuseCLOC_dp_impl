@@ -1,0 +1,13 @@
+program: train_sweep.py
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  horizon:
+    values: [6, 12, 24, 36, 48]
+  num_epochs:
+    values: [3, 5, 10, 30]
+name: diffuse_cloc_horizon_epochs_sweep
+description: "Sweep over horizon (x_horizon=y_horizon) and num_epochs for DiffuseCLoC training"
+project: diffuse_cloc
