@@ -8,7 +8,7 @@ First, generate a dataset from legged gym environments:
 cd <REPO_ROOT_DIR>
 python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
   --output "./diffusion_policy/data/legged_gym/elspider_dataset.zarr" \
-  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/plane_walk_300_jit.pt" \
+  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/20251118_plane_walk_jit.pt" \
   --task_name "elspider_air_flat" \
   --n_episodes 4000 \
   --episode_steps 500 \
