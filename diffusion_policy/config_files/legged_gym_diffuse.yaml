@@ -148,8 +148,8 @@ cloc_analyzer:
   visualization:
     update_interval: 10              # Update plots every N steps
     save_plots: false                # Save episode analysis plots
-    show_realtime: true             # Show matplotlib window during eval
-    plot_size: [24, 8]            # Figure size [width, height] in inches
+    # show_realtime: true             # Show matplotlib window during eval
+    # plot_size: [24, 8]            # Figure size [width, height] in inches
     
   # Data collection settings  
   data:
