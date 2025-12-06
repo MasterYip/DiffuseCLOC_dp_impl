@@ -7,3 +7,6 @@
 *.out
 *.egg-info
 !checkpoints/**
+
+wandb
+.sweep_id
