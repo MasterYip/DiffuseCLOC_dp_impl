@@ -70,8 +70,12 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
     cls = hydra.utils.get_class(cfg._target_)
     trainer: BaseTrainer = cls(cfg)
     
-    # Load checkpoint into trainer
+    # Load checkpoint into trainer (this will also reconstruct normalizer if it exists in checkpoint)
     trainer.load_payload(payload, exclude_keys=None, include_keys=None)
+    
+    # # Load normalizer from dataset if not already loaded from checkpoint
+    # print("\nEnsuring normalizer is loaded...")
+    # trainer.load_for_eval()
     
     # Get bc_agent from trainer
     bc_agent = trainer.agent

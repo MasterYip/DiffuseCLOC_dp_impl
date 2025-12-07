@@ -139,6 +139,49 @@ class OfflineTrainer(BaseTrainer):
         ax.set_ylabel("Input History")
         plt.show()
 
+    def load_for_eval(self, dataset_path=None):
+        """
+        Load dataset and set normalizer for evaluation.
+        This should be called after loading checkpoint to properly initialize normalizer.
+        Only loads from dataset if normalizer wasn't already loaded from checkpoint.
+        
+        Args:
+            dataset_path: Optional path to dataset. If None, uses cfg.dataset_dir + cfg.dataset.zarr_path
+        """
+        # Check if normalizer was already loaded from checkpoint
+        if hasattr(self.agent, 'normalizer') and self.agent.normalizer is not None:
+            print("Normalizer already loaded from checkpoint, skipping dataset load")
+            return self.agent.normalizer
+        
+        print("Normalizer not found in checkpoint, loading from dataset...")
+        cfg = copy.deepcopy(self.cfg)
+        
+        # Configure dataset
+        cfg.dataset.horizon = self.agent.horizon
+        cfg.dataset.n_past_steps = self.agent.n_past_steps
+        
+        if dataset_path is not None:
+            cfg.dataset.zarr_path = dataset_path
+        else:
+            cfg.dataset.zarr_path = cfg.dataset_dir + cfg.dataset.zarr_path
+        
+        # Load dataset
+        dataset: OfflineDataset = hydra.utils.instantiate(cfg.dataset)
+        assert isinstance(dataset, OfflineDataset)
+        
+        # Get and set normalizer
+        normalizer = dataset.get_normalizer()
+        self.agent.set_normalizer(normalizer)
+        self.agent.set_dataset_class(dataset.__class__)
+        
+        if cfg.training.use_ema and self.ema_agent is not None:
+            self.ema_agent.set_normalizer(normalizer)
+            self.ema_agent.set_dataset_class(dataset.__class__)
+        
+        print(f"Loaded normalizer from dataset: {cfg.dataset.zarr_path}")
+        print(f"Normalizer type: {type(normalizer).__name__}")
+        
+        return normalizer
 
     def train(self, args_cli):
         cfg = copy.deepcopy(self.cfg)
