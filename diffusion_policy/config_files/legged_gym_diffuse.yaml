@@ -36,7 +36,7 @@ ema:
 
 exp_name: null
 output_dir: "./outputs/"
-dataset_dir: "/home/user/CodeSpace/Diffusion/cmp_diffusion_policy/diffusion_diffuse_cloc/data/legged_gym/" # "/home/haytham/ProtoMotions/"
+dataset_dir: "/home/aerver/Documents/CodeSpace/Python/PredictiveDiffusionPlanner_Dev/diffuse_cloc/data/legged_gym/" # "/home/haytham/ProtoMotions/"
 
 logging:
   group: null
@@ -66,8 +66,8 @@ policy:
     _target_: diffusion_policy.modules.diffuse_cloc.DiffuseCLoC
     backbone:
       _target_: diffusion_policy.backbone.transformer_codiffuse.Transformer
-      x_horizon: 36 # 36
-      y_horizon: 36
+      x_horizon: 12 # 36
+      y_horizon: 12
       x_input_dim: 66 #384 #384 #114 #198 #114 #198 #192 #192 # 198 #204 #192 #201 #192
       y_input_dim: 18
       x_output_dim: 66 #384 #384 #114 #198 #114 #198 #192 # 192 #198 #204 #192 #201 #192
@@ -81,14 +81,14 @@ policy:
       y_to_x_attn: causal
       y_to_y_attn: causal
 
-    denoising_steps: 30 # 20
+    denoising_steps: 10 # 20
     predict_epsilon: false
     denoised_clip_value: 1.0
     action_weight_schedule: constant-to-8
     clean_past_state: true
     clean_past_action: false
 
-    n_past_steps: 4
+    n_past_steps: 8
     # state_emphasis: random_emph_symm
     # FIXME:
     state_emphasis: same
@@ -98,7 +98,7 @@ dataset:
   _target_: diffusion_policy.dataset.legged_gym_dataset.LeggedGymDataset
   horizon: null
   n_obs_steps: null
-  n_past_steps: 4
+  n_past_steps: 8
   pad_after: 1
   pad_before: 1
   seed: 42

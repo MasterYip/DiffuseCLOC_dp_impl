@@ -81,6 +81,14 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
     bc_agent = trainer.agent
     bc_agent.to(device)
     bc_agent.eval()
+    # print("normalizer params:")
+    # d = bc_agent.normalizer.get_input_stats()
+    
+    # # print d in beautiful way with tensor contents
+    # for key, param_dict in d.items():
+    #     print(f"{key}:")
+    #     for subkey, tensor in param_dict.items():
+    #         print(f"  {subkey}: {tensor.tolist()}")
     
     print(f"BCAgent loaded and moved to {device}")
     print(f"Policy type: {type(bc_agent.actor).__name__}")

@@ -8,7 +8,7 @@ First, generate a dataset from legged gym environments:
 cd <REPO_ROOT_DIR>
 python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
   --output "./diffusion_policy/data/legged_gym/elspider_dataset.zarr" \
-  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/20251118_plane_walk_jit.pt" \
+  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/20251207_plane_walk_jit.pt" \
   --task_name "elspider_air_flat" \
   --n_episodes 4000 \
   --episode_steps 500 \
@@ -38,7 +38,7 @@ resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" #
 
 ```bash
 python eval.py \
-    --checkpoint outputs/November-29-13-13-19-sweep_h24_e10/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-07-15-01-11-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
@@ -65,6 +65,7 @@ It is also slower than the model trained with diffuse loco.
 ##### **20251128 Test**:
 1. Train elair_flat from collected dataset with x&y horizon=12. If run at horizon=12, the model walks slow, but walks faster when set to horizon=36.
 2. Train elair_flat from collected dataset with x&y horizon=36. The model walks slow at horizon=36. It doesn't walk if set to other horizon.
+**NOTE**:Looks like the **Magnitude of cmd**(scaling is different from original data traj) affect the robot whether walk or not.
 
 Summary:
 1. If train at horizon $h_0$, it walks slow at horizon $h <= h_0$, and walk faster at horizon $h > h_0$. (**guess**: only when episode length is short, long eps may leads to overfitting, which can't walk at other horizon)
