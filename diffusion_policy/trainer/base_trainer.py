@@ -103,30 +103,22 @@ class BaseTrainer:
             exclude_keys = tuple()
         # if include_keys is None:
         #     include_keys = payload['pickles'].keys()
-        # First, check if we need to reconstruct the normalizer from the checkpoint
-        if 'agent' in payload['state_dicts'] and hasattr(self, 'agent'):
-            agent_state = payload['state_dicts']['agent']
-            
-            # Check if normalizer state exists in the checkpoint
-            normalizer_keys = [k for k in agent_state.keys() if 'normalizer' in k]
-            if normalizer_keys and self.agent.actor.normalizer is None:
-                print("Reconstructing normalizer from checkpoint...")
-                # Import normalizer class
-                from diffusion_policy.utils.normalizer import LinearNormalizer
-                
-                # Create a new normalizer instance
-                normalizer = LinearNormalizer()
-                
-                # Set it to the agent
-                self.agent.set_normalizer(normalizer)
-                
-                # If EMA agent exists, set it there too
-                if hasattr(self, 'ema_agent') and self.ema_agent is not None:
-                    ema_normalizer = LinearNormalizer()
-                    self.ema_agent.set_normalizer(ema_normalizer)
-                    print("Normalizer initialized for agent and ema_agent")
-                else:
-                    print("Normalizer initialized for agent")
+        
+        # Set Normalizer Class
+        print("Reconstructing normalizer from checkpoint...")
+        from diffusion_policy.utils.normalizer import LinearNormalizer
+        normalizer = LinearNormalizer()
+        # Set it to the agent
+        self.agent.set_normalizer(normalizer)
+        # If EMA agent exists, set it there too
+        if hasattr(self, 'ema_agent') and self.ema_agent is not None:
+            ema_normalizer = LinearNormalizer()
+            self.ema_agent.set_normalizer(ema_normalizer)
+            print("Normalizer initialized for agent and ema_agent")
+        else:
+            print("Normalizer initialized for agent")
+
+
 
         for key, value in payload['state_dicts'].items():
             if key not in exclude_keys and 'optimizer' not in key:
@@ -135,6 +127,8 @@ class BaseTrainer:
                     print(f"Loaded {key}")
                 except Exception as e:
                     print(f"Failed to load {key}, due to {e}")
+                    
+
         # for key in include_keys:
         #     if key in payload['pickles']:
         #         self.__dict__[key] = dill.loads(payload['pickles'][key])
