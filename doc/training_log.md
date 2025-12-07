@@ -38,7 +38,7 @@ resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" #
 
 ```bash
 python eval.py \
-    --checkpoint outputs/December-07-15-01-11-legged_gym_diffuse/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-07-17-33-10-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
@@ -54,13 +54,16 @@ python eval.py \
 
 Cause:
 **Normalizer(bc_agent) not correctly set.**
+**`denoising_steps` are set too small.**
 
 #### 20251122 ElSpiderAir Walk Slow [partially SOLVED]
 The collected dataset are not slow, but the trained model walks slow.
 
 It is also slower than the model trained with diffuse loco.
 
-**Cause1**: **Eval time is not real time.**
+**Cause1**: 
+**Eval time is not real time.**
+**`denoising_steps` are set too small.**
 
 ##### **20251128 Test**:
 1. Train elair_flat from collected dataset with x&y horizon=12. If run at horizon=12, the model walks slow, but walks faster when set to horizon=36.
