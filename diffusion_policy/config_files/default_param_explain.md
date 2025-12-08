@@ -218,7 +218,7 @@ backbone:
 
 ```yaml
 # Diffusion parameters
-denoising_steps: 20                  # Number of DDPM denoising steps
+denoising_steps: 20                  # Number of DDPM denoising steps (in rolling diffusion)
 predict_epsilon: false               # Use x0 prediction (not noise prediction)
 denoised_clip_value: 1.0            # Clip predictions to [-1, 1]
 action_weight_schedule: constant-to-8 # Action loss weighting schedule

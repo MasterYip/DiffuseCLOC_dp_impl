@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(description='Process some integers.')
 
 # diffusion policy arguments
 parser.add_argument("--cfg", required=True, help="Name of the config file")
-parser.add_argument("--exp_name", required=False, default='default_exp_name', help="exp name")
+parser.add_argument("--exp_name", required=False, default='default_exp', help="exp name")
 
 # parse the arguments
 args_cli = parser.parse_args()
@@ -34,8 +34,7 @@ def main():
     cfg: OmegaConf = OmegaConf.load(os.path.join(DIFFUSION_POLICY_ROOT, './config_files', args_cli.cfg))
     OmegaConf.resolve(cfg)
 
-    cfg.exp_name = args_cli.cfg[:-5]
-    
+    cfg.exp_name = args_cli.cfg[:-5] + "-" + args_cli.exp_name
     cfg.output_dir = os.path.join(cfg.output_dir, time.strftime("%B-%d-%H-%M-%S", time.localtime()) + "-" + cfg.exp_name)
     os.makedirs(cfg.output_dir, exist_ok=True)
 

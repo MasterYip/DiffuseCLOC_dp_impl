@@ -82,10 +82,13 @@ policy:
       y_to_y_attn: causal
 
     # NOTE: This parameter affect policy performance if <20
-    denoising_steps: 30 # 20
+    # x_horizon > n_past_steps + denoising_steps
+    denoising_steps: 20 # 20   
     predict_epsilon: false
     denoised_clip_value: 1.0
     action_weight_schedule: constant-to-8
+    # action_weight_schedule: linear
+    # state_weight_schedule: linear
     clean_past_state: true
     clean_past_action: false
 
