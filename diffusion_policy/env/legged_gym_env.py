@@ -67,7 +67,11 @@ class LeggedGymEnv:
 
         # Create environment from task registry
         self.env, self.env_cfg = task_registry.make_env(name=args.task, args=args)
-
+        self.env_cfg.terrain.curriculum = False
+        self.env_cfg.noise.add_noise = False
+        self.env_cfg.domain_rand.randomize_friction = False
+        self.env_cfg.domain_rand.push_robots = False
+        
         # Cache attributes
         self.num_envs = self.env.num_envs
         self.num_obs = self.env.num_obs

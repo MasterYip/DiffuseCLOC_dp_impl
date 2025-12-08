@@ -89,7 +89,7 @@ policy:
     clean_past_state: true
     clean_past_action: false
 
-    n_past_steps: 8
+    n_past_steps: 4
     # state_emphasis: random_emph_symm
     # FIXME:
     state_emphasis: same
@@ -99,7 +99,7 @@ dataset:
   _target_: diffusion_policy.dataset.legged_gym_dataset.LeggedGymDataset
   horizon: null
   n_obs_steps: null
-  n_past_steps: 8
+  n_past_steps: 4
   pad_after: 1
   pad_before: 1
   seed: 42

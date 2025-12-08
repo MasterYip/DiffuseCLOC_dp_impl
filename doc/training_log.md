@@ -8,11 +8,11 @@ First, generate a dataset from legged gym environments:
 cd <REPO_ROOT_DIR>
 python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
   --output "./diffusion_policy/data/legged_gym/elspider_dataset.zarr" \
-  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/20251207_plane_walk_jit.pt" \
+  --checkpoints "extended_legged_gym/legged_gym/ckpt/elspider_air/20251207_plane_walk_jit2.pt" \
   --task_name "elspider_air_flat" \
   --n_episodes 4000 \
   --episode_steps 500 \
-  --n_obs_steps 8 \
+  --n_obs_steps 4 \
   --num_envs 1000 \
   --headless \
 ```
@@ -38,7 +38,7 @@ resume_path: "master_yip-harbin-institute-of-technology/diffuse_cloc/7evbzsbl" #
 
 ```bash
 python eval.py \
-    --checkpoint outputs/December-07-17-33-10-legged_gym_diffuse/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-08-12-05-43-legged_gym_diffuse/checkpoints/latest.ckpt \
     -o eval_output \
     --task elspider_air_flat \
     --num_envs 16 \
@@ -77,4 +77,7 @@ Summary:
 Summary:
 1. If train at horizon $h_0$, it walks slow at horizon $h = h_0$, and walk faster at horizon $h \neq h_0$.
 
-#### 20251118 Datacollection: should turn off push_robots?
+#### 20251118 Datacollection: should turn off push_robots/add_noise/domain_rand?
+
+Problem:
+1. If `add_noise` to data collection, the trained model **jiggles** a lot?
