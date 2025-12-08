@@ -10,7 +10,60 @@ from diffusion_policy.utils.symm_utils import get_reflect_reps, get_reflect_op
 
 
 class G1DatasetBase(OfflineDataset):
-    """Base class with common functionality for G1 datasets"""
+    """Base class with common functionality for G1 datasets
+    
+    State Representation (384 dimensions total):
+    ============================================
+    
+    Standard G1_Dataset state breakdown:
+    
+    1. Body Positions (90 dims):
+       - 30 bodies × 3 coordinates (x, y, z)
+       - Range: [0:90]
+       - Normalized to character frame (relative to root at nominal timestep)
+    
+    2. Body Linear Velocities (90 dims):
+       - 30 bodies × 3 velocity components (vx, vy, vz)
+       - Range: [90:180]
+       - Normalized to character frame (rotated to yaw frame)
+    
+    3. Root Position (3 dims):
+       - Global position of pelvis/root body (x, y, z)
+       - Range: [180:183]
+       - Normalized: relative to position at nominal timestep, rotated to yaw frame
+    
+    4. Root Rotation (3 dims):
+       - Root orientation as rotation vector (rx, ry, rz)
+       - Range: [183:186]
+       - Normalized: relative to yaw orientation at nominal timestep
+    
+    5. Root Linear Velocity (3 dims):
+       - Root linear velocity (vx, vy, vz)
+       - Range: [186:189]
+       - Normalized: rotated to yaw frame at nominal timestep
+    
+    6. Root Angular Velocity (3 dims):
+       - Root angular velocity (wx, wy, wz)
+       - Range: [189:192]
+       - Normalized: rotated to yaw frame at nominal timestep
+    
+    Total: 90 + 90 + 3 + 3 + 3 + 3 = 192 dims (base components)
+    
+    Note: The remaining 192 dimensions may include:
+    - Joint positions (29 joints for G1)
+    - Additional body features
+    - Task-specific observations
+    
+    G1_Dataset_EE variant adds:
+    - End-effector rotations (6 dims for 2 end-effectors × 3 rotation components)
+    
+    Character Frame Normalization:
+    ==============================
+    - Nominal timestep index: n_past_steps - 1 (typically index 3 for 4-step history)
+    - Origin: Root position at nominal timestep
+    - Orientation: Yaw-only rotation (gravity-aligned, pitch/roll removed)
+    - Benefits: Translation/rotation invariance for policy learning
+    """
     
     def __init__(self, symm_aug=True, **kwargs):
         super().__init__(**kwargs)

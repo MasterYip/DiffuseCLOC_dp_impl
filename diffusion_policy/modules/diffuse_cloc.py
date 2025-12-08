@@ -270,27 +270,116 @@ class DiffuseCLoC(JointDiffusionActor):
         Create state emphasis projection matrix to amplify important features.
         Constructs emphasis_mat (Do x Do or Do x 2*Do) and its pseudoinverse.
         
-        For 'random_emph_symm' with Do=384:
-        - Projects to 768-dim space: [emphasized_state, original_state]
-        - Emphasizes root pose/velocity features (dims 180-189) by 4x
-        - Maintains left-right symmetry for legged locomotion
+        State Emphasis Modes for G1 Robot (384-dim state):
+        ===================================================
+        
+        G1 State Layout (based on G1DatasetBase documentation):
+        - Body Positions [0:90]: 30 bodies × 3 coords (x,y,z)
+        - Body Velocities [90:180]: 30 bodies × 3 velocity components
+        - Root Position [180:183]: Global pelvis position (x,y,z)
+        - Root Rotation [183:186]: Root orientation as rotation vector
+        - Root Linear Velocity [186:189]: Root velocity components
+        - Root Angular Velocity [189:192]: Root angular velocity
+        - Additional Features [192:384]: Symmetry Data Augmentation, etc.
+        
+        Available Emphasis Modes:
+        ========================
+        
+        1. 'same' (Default - Identity):
+           - emphasis_mat = I(384x384)
+           - No transformation, preserves original state space
+           - Use: Baseline comparison, standard diffusion
+        
+        2. 'rand' (Random Projection):
+           - emphasis_mat = randn(384x384) / sqrt(384)
+           - Random orthogonal-like transformation
+           - Use: Regularization, prevents overfitting to specific features
+        
+        3. 'emph_global' (Emphasize Global Features):
+           - emphasis_mat = I(384x384)
+           - Root linear velocity [144:150] amplified by 3x
+           - Root position [162:165] amplified by 3x
+           - Use: Locomotion tasks requiring precise global positioning
+        
+        4. 'random_emph' (Random + Global Emphasis):
+           - Two-step transformation: B @ A
+           - A = randn(384x384)
+           - B = I with root features amplified by 5x
+           - Normalized by sqrt(384 - 9 + 9*25) to preserve variance
+           - Use: Combines regularization with global feature emphasis
+        
+        5. 'random_emph_double' (Double State Space):
+           - Projects 192-dim to 384-dim: [emphasized, original]
+           - A = randn(192x192)
+           - B = I(192x192) with root features (180-192) amplified by 4x
+           - emphasis_mat = [B@A, I] shape (192x384)
+           - Use: Redundant representation for robust learning
+        
+        6. 'random_emph_symm' (Symmetric Emphasis):
+           - Most sophisticated mode for bipedal locomotion
+           - Projects 192-dim to 384-dim: [emphasized, original]
+           - Uses G1_Dataset reflection operators for left-right symmetry
+           - Random matrix A respects body symmetry pairs
+           - Root features (180-192) emphasized:
+             - Root position/rotation [180:186] amplified by 4x  
+             - Root angular velocity [189:192] amplified by 4x
+           - Use: Bipedal locomotion with symmetric gaits
+        
+        7. 'copy' (Feature Repetition):
+           - Creates 10 copies of critical features
+           - Root linear velocity [144:150] copied 10 times
+           - Root angular velocity [162:165] copied 10 times
+           - Projects from (384-90) to 384 dimensions
+           - Use: Extreme emphasis on root dynamics
+        
+        Key Design Principles:
+        =====================
+        
+        Root Feature Emphasis (dims 180-192):
+        - Critical for locomotion stability and control
+        - Contains global pose, velocity, and angular velocity
+        - Amplification factors: 3x-5x depending on mode
+        
+        Symmetry Preservation ('random_emph_symm'):
+        - Maintains left-right body correspondence
+        - Essential for natural bipedal gaits
+        - Uses reflection operators from G1_Dataset
+        
+        Dimensionality Expansion:
+        - Some modes double state space (192→384)
+        - Creates redundant representations for robustness
+        - emphasis_mat_inv provides proper reconstruction
+        
+        Variance Normalization:
+        - Scaling factors preserve overall signal magnitude
+        - Prevents gradient explosion from feature amplification
+        - Maintains numerical stability during training
         
         Sets self.emphasis_mat and self.emphasis_mat_inv as buffers.
         """
         state_dim = self.backbone.x_output_dim
+        
         if self.state_emphasis == "rand":
+            # Random orthogonal-like projection for regularization
             emphasis_mat = torch.randn((state_dim,state_dim),device=self.device) / np.sqrt(state_dim)
+            
         elif self.state_emphasis == "emph_global":
+            # Emphasize root linear velocity [144:150] and position [162:165] by 3x
             emphasis_mat = torch.eye(state_dim,device=self.device)
-            emphasis_mat[torch.arange(144,150),torch.arange(144,150)] = 3
-            emphasis_mat[torch.arange(162,165),torch.arange(162,165)] = 3
+            emphasis_mat[torch.arange(144,150),torch.arange(144,150)] = 3  # Root lin vel
+            emphasis_mat[torch.arange(162,165),torch.arange(162,165)] = 3  # Root position
+            
         elif self.state_emphasis == "random_emph":
+            # Random projection + global emphasis (5x for root features)
             emphasis_mat_A = torch.randn((state_dim,state_dim),device=self.device)
             emphasis_mat_B = torch.eye(state_dim,device=self.device)
-            emphasis_mat_B[torch.arange(144,150),torch.arange(144,150)] = 5
-            emphasis_mat_B[torch.arange(162,165),torch.arange(162,165)] = 5
+            emphasis_mat_B[torch.arange(144,150),torch.arange(144,150)] = 5  # Root lin vel
+            emphasis_mat_B[torch.arange(162,165),torch.arange(162,165)] = 5  # Root position
+            # Normalize to preserve variance: sqrt(374 normal + 9*25 emphasized)
             emphasis_mat = (emphasis_mat_B @ emphasis_mat_A) / np.sqrt(state_dim - 9 + 9 * 5**2)
+            
         elif self.state_emphasis == "random_emph_half":
+            # Unused mode - partial implementation
             emphasis_mat_A = torch.randn((state_dim,state_dim),device=self.device)
             emphasis_mat_B = torch.eye(state_dim,device=self.device)
             mask = (torch.rand((1, state_dim),device=self.device) < 0.5).repeat(state_dim, 1)
@@ -298,56 +387,80 @@ class DiffuseCLoC(JointDiffusionActor):
             emphasis_mat_B[torch.arange(162,165),torch.arange(162,165)] = 5
             emphasis_mat_B = (emphasis_mat_B @ emphasis_mat_A) / np.sqrt(state_dim - 9 + 9 * 5**2)
             emphasis_mat_B_nominal = (emphasis_mat_A) / np.sqrt(state_dim)
+            
         elif self.state_emphasis == "random_emph_double":
-            state_dim = state_dim // 2
+            # Double state space: [emphasized, original] - 192→384 dims
+            state_dim = state_dim // 2  # Work with 192 dims
             emphasis_mat_A = torch.randn((state_dim,state_dim),device=self.device)
             emphasis_mat_B = torch.eye(state_dim,device=self.device)
             emphasis_mat_B_nominal = torch.eye(state_dim,device=self.device)
-            start_dim = state_dim - 12
-            emphasis_mat_B[torch.arange(start_dim,start_dim+6),torch.arange(start_dim,start_dim+6)] = 4
-            emphasis_mat_B[torch.arange(start_dim+6,start_dim+12),torch.arange(start_dim+6,start_dim+12)] = 4
+            
+            # Emphasize root features at end of 192-dim space
+            start_dim = state_dim - 12  # Root features [180:192] in 192-dim space
+            emphasis_mat_B[torch.arange(start_dim,start_dim+6),torch.arange(start_dim,start_dim+6)] = 4   # Root pose/vel
+            emphasis_mat_B[torch.arange(start_dim+6,start_dim+12),torch.arange(start_dim+6,start_dim+12)] = 4  # Root ang vel
+            
             emphasis_mat = emphasis_mat_B @ emphasis_mat_A / np.sqrt(state_dim - 9 / 2 + 9 * 4**2 / 2)
-            emphasis_mat = torch.cat((emphasis_mat, emphasis_mat_B_nominal), dim=1)
+            emphasis_mat = torch.cat((emphasis_mat, emphasis_mat_B_nominal), dim=1)  # Shape: (192, 384)
 
         elif self.state_emphasis == "random_emph_symm":
-            state_dim = state_dim // 2
+            # Symmetric emphasis for bipedal locomotion - respects left/right symmetry
+            state_dim = state_dim // 2  # Work with 192 dims
             emphasis_mat_A = torch.zeros((state_dim,state_dim),device=self.device)
+            
+            # Get G1 reflection operators for left-right symmetry
             from diffusion_policy.dataset.g1_offline_dataset import G1_Dataset
             obs_r, _ = G1_Dataset.get_reflection_ops()
-            mask = obs_r.sum(dim=0) < 0
+            mask = obs_r.sum(dim=0) < 0  # Identify left/right body pairs
+            
+            # Create symmetric random matrix respecting body pairs
             emphasis_mat_A[mask, :state_dim//2] = emphasis_mat_A[mask, :state_dim//2].normal_()
             emphasis_mat_A[~mask, state_dim//2:] = emphasis_mat_A[~mask, state_dim//2:].normal_()
             emphasis_mat_A = (emphasis_mat_A + obs_r.abs().to(emphasis_mat_A.dtype) @ emphasis_mat_A) / 2
 
+            # Normalize each half independently
             emphasis_mat_A[mask, :state_dim//2] /= np.sqrt((mask).sum())
             emphasis_mat_A[~mask, state_dim//2:] /= np.sqrt((~mask).sum())
             
             emphasis_mat_B = torch.eye(state_dim,device=self.device)
             emphasis_mat_B_nominal = torch.eye(state_dim,device=self.device)
-            start_dim = state_dim - 12
+            start_dim = state_dim - 12  # Root features [180:192] in 192-dim space
 
-            # emphasis_mat_B[torch.arange(90, 180),torch.arange(90, 180)] = 0.5
-            # emphasis_mat_B[torch.arange(186, 189),torch.arange(186, 189)] = 0.5
+            # Optional velocity dampening (commented out)
+            # emphasis_mat_B[torch.arange(90, 180),torch.arange(90, 180)] = 0.5  # Body velocities
+            # emphasis_mat_B[torch.arange(186, 189),torch.arange(186, 189)] = 0.5  # Root lin vel
 
-
-            emphasis_mat_B[torch.arange(start_dim,start_dim+6),torch.arange(start_dim,start_dim+6)] = 4
-            emphasis_mat_B[torch.arange(start_dim+9,start_dim+12),torch.arange(start_dim+9,start_dim+12)] = 4
+            # Emphasize root features by 4x
+            emphasis_mat_B[torch.arange(start_dim,start_dim+6),torch.arange(start_dim,start_dim+6)] = 4      # Root pos/rot [180:186] 
+            emphasis_mat_B[torch.arange(start_dim+9,start_dim+12),torch.arange(start_dim+9,start_dim+12)] = 4  # Root ang vel [189:192]
+            
             emphasis_mat = emphasis_mat_B @ emphasis_mat_A
-            emphasis_mat = torch.cat((emphasis_mat, emphasis_mat_B_nominal), dim=1)
+            emphasis_mat = torch.cat((emphasis_mat, emphasis_mat_B_nominal), dim=1)  # Shape: (192, 384)
 
         elif self.state_emphasis == "same":
+            # Identity transformation - no emphasis
             emphasis_mat = torch.eye(state_dim,device=self.device)
 
         elif self.state_emphasis == "copy":
-            state_dim = state_dim - 9*10
+            # Extreme root emphasis via feature repetition (10 copies)
+            state_dim = state_dim - 9*10  # Reduce by repeated features
             mat = torch.eye(state_dim,device=self.device)
             emphasis_mat = torch.zeros((state_dim, state_dim + 9*10), device=self.device)
-            emphasis_mat[:144, :144] = mat[:144, :144]
+            
+            # Copy main features
+            emphasis_mat[:144, :144] = mat[:144, :144]  # Body pos/vel
+            
+            # Repeat root linear velocity [144:150] 10 times
             for i in range(10):
                 emphasis_mat[144:150, 144+i*6:144+(i+1)*6] = mat[144:150, 144:150]
-            emphasis_mat[150:162, 210:222] = mat[150:162, 150:162]
+            
+            # Copy intermediate features
+            emphasis_mat[150:162, 210:222] = mat[150:162, 150:162]  
+            
+            # Repeat root angular velocity [162:165] 10 times
             for i in range(10):
                 emphasis_mat[162:165, 222+i*3:222+(i+1)*3] = mat[162:165, 162:165]
 
+        # Register as buffers for proper device handling and state dict inclusion
         self.register_buffer('emphasis_mat', emphasis_mat)
         self.register_buffer('emphasis_mat_inv', torch.linalg.pinv(emphasis_mat))
