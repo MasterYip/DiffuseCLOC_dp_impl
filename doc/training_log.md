@@ -75,9 +75,9 @@ Summary:
 
 ##### **20251129 W&B Sweep Test**:
 Summary:
-1. If train at horizon $h_0$, it walks slow at horizon $h = h_0$, and walk faster at horizon $h \neq h_0$.
+1. If train at horizon $h_0$, it walks slow at horizon $h = h_0$, and walk faster at horizon $h \neq h_0$. (**guess**: only when episode length is short, long eps may leads to overfitting, which can't walk at other horizon. Besides, the better perf is due to **some loading error coincidence**.)
 
 #### 20251118 Datacollection: should turn off push_robots/add_noise/domain_rand?
 
 Problem:
-1. If `add_noise` to data collection, the trained model **jiggles** a lot?
+1. If `add_noise` to data collection, the trained model **jiggles** a lot? (looks like it is eps not long enough to average out the noise effect)
