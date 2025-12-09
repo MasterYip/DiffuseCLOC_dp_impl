@@ -36,7 +36,7 @@ ema:
 
 exp_name: null
 output_dir: "./outputs/"
-dataset_dir: "/home/aerver/Documents/CodeSpace/Python/PredictiveDiffusionPlanner_Dev/diffuse_cloc/data/legged_gym_1128/" # "/home/haytham/ProtoMotions/"
+dataset_dir: "/home/aerver/Documents/CodeSpace/Python/PredictiveDiffusionPlanner_Dev/diffuse_cloc/data/legged_gym/" # "/home/haytham/ProtoMotions/"
 
 logging:
   group: null
@@ -93,8 +93,9 @@ policy:
     clean_past_action: false
 
     n_past_steps: 4
+    # State Emphasis: emphasize important state dimensions
+    # FIXME: Need better emph
     # state_emphasis: random_emph_symm
-    # FIXME:
     state_emphasis: elair_emph
     state_proj: true
 

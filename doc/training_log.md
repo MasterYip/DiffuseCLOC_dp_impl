@@ -62,6 +62,7 @@ The collected dataset are not slow, but the trained model walks slow.
 It is also slower than the model trained with diffuse loco.
 
 **Cause1**: 
+**State emph** are not correctly set.
 **Eval time is not real time.**
 **`denoising_steps` are set too small.**
 
