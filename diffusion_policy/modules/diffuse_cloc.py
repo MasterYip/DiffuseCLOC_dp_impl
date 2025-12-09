@@ -466,7 +466,7 @@ class DiffuseCLoC(JointDiffusionActor):
             emphasis_mat = torch.eye(state_dim,device=self.device)
             # Assuming ElSpider_Air has similar root feature layout
             emphasis_mat[torch.arange(0,6),torch.arange(0,6)] = 3  # Root vel/angvel
-            emphasis_mat[torch.arange(9,12),torch.arange(9,12)] = 4  # Command
+            emphasis_mat[torch.arange(9,12),torch.arange(9,12)] = 5  # Command
             emphasis_mat[torch.arange(12,30),torch.arange(12,30)] = 2  # Dof positions/velocities
 
 
