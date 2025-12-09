@@ -461,6 +461,15 @@ class DiffuseCLoC(JointDiffusionActor):
             for i in range(10):
                 emphasis_mat[162:165, 222+i*3:222+(i+1)*3] = mat[162:165, 162:165]
 
+        elif self.state_emphasis == "elair_emph":
+            # Emphasize features relevant for ElSpider_Air robot
+            emphasis_mat = torch.eye(state_dim,device=self.device)
+            # Assuming ElSpider_Air has similar root feature layout
+            emphasis_mat[torch.arange(0,6),torch.arange(0,6)] = 3  # Root vel/angvel
+            emphasis_mat[torch.arange(9,12),torch.arange(9,12)] = 4  # Command
+            emphasis_mat[torch.arange(12,30),torch.arange(12,30)] = 2  # Dof positions/velocities
+
+
         # Register as buffers for proper device handling and state dict inclusion
         self.register_buffer('emphasis_mat', emphasis_mat)
         self.register_buffer('emphasis_mat_inv', torch.linalg.pinv(emphasis_mat))

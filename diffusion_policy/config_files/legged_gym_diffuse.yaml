@@ -95,7 +95,7 @@ policy:
     n_past_steps: 4
     # state_emphasis: random_emph_symm
     # FIXME:
-    state_emphasis: same
+    state_emphasis: elair_emph
     state_proj: true
 
 dataset:
