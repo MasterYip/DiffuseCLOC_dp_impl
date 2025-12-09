@@ -45,6 +45,10 @@ python eval.py \
     --max_steps 1000
 ```
 
+### Problem:
+
+1. What is the effect of dataloadaer batch size to training speed and policy performance?
+
 ### Log
 
 #### 20251117 ElSpiderAir Don't walk [SOLVED]
@@ -94,3 +98,24 @@ Summary:
 Problem:
 
 1. If `add_noise` to data collection, the trained model **jiggles** a lot? (looks like it is eps not long enough to average out the noise effect)
+
+#### 20251209 Noise Schedule Problem
+
+This printed noise schedule is:
+
+```txt
+Diffusion step: 1 / 15
+tensor([ 0,  0,  0,  0, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 19])
+Diffusion step: 2 / 15
+tensor([ 0,  0,  0,  0, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
+        13, 13, 13, 13, 13, 19])
+Diffusion step: 3 / 15
+tensor([ 0,  0,  0,  0, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+        12, 12, 12, 12, 12, 19])
+Diffusion step: 4 / 15
+tensor([ 0,  0,  0,  0, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+        11, 11, 11, 11, 11, 19])
+```
+
+This is not the paper proposed noise schedule.
