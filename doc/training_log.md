@@ -48,6 +48,7 @@ python eval.py \
 ### Problem:
 
 1. What is the effect of dataloadaer batch size to training speed and policy performance?
+2. Why DiffuseCLOC is sensitive to RL source data collection policy? (for some policy it can walk, for some it can't)
 
 ### Log
 

@@ -200,11 +200,33 @@ class DiffuseCLoC(JointDiffusionActor):
             
         Returns:
             t_all: (K, H) - Noise levels per (iteration, position)
-                   e.g., for 'full_decreasing' with H=20, K=20:
-                   [[19,19,18,17,...,0],
-                    [18,18,17,16,...,0],
-                    ...
-                    [0,0,0,0,...,0]]
+            
+        Examples for H=20, denoising_steps=20:
+        
+        'full' schedule (K=20):
+        [[19,19,19,19,...,19],
+         [18,18,18,18,...,18],
+         [17,17,17,17,...,17],
+         ...
+         [0,0,0,0,...,0]]
+        
+        'full_decreasing' schedule (K=20):
+        [[19,19,18,17,...,0],
+         [18,18,17,16,...,0],
+         [17,17,16,15,...,0],
+         ...
+         [0,0,0,0,...,0]]
+        
+        'from_xT_decreasing' schedule (K=12, start=11):
+        [[11,11,10,9,...,0],
+         [10,10,9,8,...,0],
+         [9,9,8,7,...,0],
+         ...
+         [0,0,0,0,...,0]]
+        
+        'from_xT_step' schedule (K=2, start=14, step=10):
+        [[14,14,4,4,...,4],
+         [4,4,4,4,...,4]]
         """
         
         def decreasing_matrix(start_value, is_state, step_size=1, all_clear=False):
