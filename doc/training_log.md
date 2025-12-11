@@ -51,6 +51,7 @@ python eval.py \
 2. Why DiffuseCLOC is sensitive to RL source data collection policy? (for some policy it can walk, for some it can't)
 3. Why State emph is added when training, but the pred state do not reflect the emph?
 4. Normalizer don't normalize the state data (each dim) to standard normal distribution?
+   **Answer**: It is **Linear Normalizer**. Scale uniformly to [-1, 1].
 
 ### Log
 
