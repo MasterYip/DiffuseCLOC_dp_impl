@@ -54,6 +54,7 @@ python eval.py \
    why not use `gaussian` mode in the normalizer (get_normalizer)？
 5. why not using `from_xT_decreasing`
         self.state_schedule = 'from_xT_step'
+6. **Why 1128jit dataset version are trained better than 1207jit?**
 
 ### Log
 
