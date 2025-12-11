@@ -336,8 +336,16 @@ def test():
     }
     normalizer = LinearNormalizer()
     normalizer.fit(data)
+    print("data_mean",data["obs"].mean())
+    print("data_std",data["obs"].std())
     datan = normalizer.normalize(data)
+    print("datan_mean",datan["obs"].mean())
+    print("datan_std",datan["obs"].std())
+    print("datan_max", datan["obs"].max())
+    print("datan_min", datan["obs"].min())
     dataun = normalizer.unnormalize(datan)
+    print("dataun_mean",dataun["obs"].mean())
+    print("dataun_std",dataun["obs"].std())
     for key in data:
         assert torch.allclose(data[key], dataun[key], atol=1e-4)
     
@@ -351,3 +359,6 @@ def test():
     dataun = n.unnormalize(datan)
     for key in data:
         assert torch.allclose(data[key], dataun[key], atol=1e-4)
+
+if __name__ == "__main__":
+    test()
