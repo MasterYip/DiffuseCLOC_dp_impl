@@ -382,7 +382,7 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
                 action_pred, action_traj, reduction="none"
             )
 
-
+        # BUG: This should be fix for (elspider air)
         hip_idxs = [0, 1, 2, 6, 7, 8]
         knee_idxs = [3, 9]
         ankle_idxs = [4, 5, 10, 11]
