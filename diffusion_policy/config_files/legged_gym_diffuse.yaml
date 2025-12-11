@@ -82,7 +82,7 @@ policy:
       y_to_y_attn: causal
 
     # NOTE: This parameter affect policy performance if <20
-    # x_horizon > n_past_steps + denoising_steps
+    # x_horizon >= n_past_steps + denoising_steps
     denoising_steps: 20 # 20   
     predict_epsilon: false
     denoised_clip_value: 1.0
