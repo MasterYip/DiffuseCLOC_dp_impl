@@ -13,8 +13,8 @@ data_collection:
   perfect_expert_only: true
 
 dataloader:
-  batch_size: 6144 #256 #128
-  num_workers: 1
+  batch_size: 512 #256 #128
+  num_workers: 4
   persistent_workers: true
   pin_memory: true
   shuffle: true

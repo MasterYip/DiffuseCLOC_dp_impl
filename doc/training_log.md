@@ -51,6 +51,9 @@ python eval.py \
 2. Why DiffuseCLOC is sensitive to RL source data collection policy? (for some policy it can walk, for some it can't)
 3. Why State emph is added when training, but the pred state do not reflect the emph?
 4. Normalizer don't normalize the state data (each dim) to standard normal distribution?
+   why not use `gaussian` mode in the normalizer (get_normalizer)？
+5. why not using `from_xT_decreasing`
+        self.state_schedule = 'from_xT_step'
 
 ### Log
 
