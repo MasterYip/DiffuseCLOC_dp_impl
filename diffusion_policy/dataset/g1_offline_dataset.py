@@ -15,37 +15,56 @@ class G1DatasetBase(OfflineDataset):
     State Representation (384 dimensions total):
     ============================================
     
-    Standard G1_Dataset state breakdown:
+    ORIGINAL DATA FORMAT (Input):
+    =============================
+    Raw input data from sample dictionary:
+    - Body Positions: Global XYZ coordinates in world frame
+    - Body Rotations: Quaternions (wx, wy, wz, w) in world frame
+    - Body Linear Velocities: XYZ vectors in world frame
+    - Body Angular Velocities: XYZ rotation rate vectors in world frame
+    - Root Position: Global XYZ coordinates in world frame
+    - Root Rotation: Quaternion in world frame
+    
+    NORMALIZED STATE REPRESENTATION (Output):
+    ==========================================
+    
+    Standard G1_Dataset state breakdown after normalization:
     
     1. Body Positions (90 dims):
        - 30 bodies × 3 coordinates (x, y, z)
        - Range: [0:90]
-       - Normalized to character frame (relative to root at nominal timestep)
+       - Original frame: Global XYZ coordinates
+       - Normalized to: Character frame (relative to root at nominal timestep)
     
     2. Body Linear Velocities (90 dims):
        - 30 bodies × 3 velocity components (vx, vy, vz)
        - Range: [90:180]
-       - Normalized to character frame (rotated to yaw frame)
+       - Original frame: Global XYZ vectors
+       - Normalized to: Character frame (rotated to yaw frame, relative to root velocity)
     
     3. Root Position (3 dims):
        - Global position of pelvis/root body (x, y, z)
        - Range: [180:183]
-       - Normalized: relative to position at nominal timestep, rotated to yaw frame
+       - Original frame: Global XYZ coordinates
+       - Normalized: Relative to position at nominal timestep, rotated to yaw frame
     
     4. Root Rotation (3 dims):
        - Root orientation as rotation vector (rx, ry, rz)
        - Range: [183:186]
-       - Normalized: relative to yaw orientation at nominal timestep
+       - Original frame: Quaternion (4-dim)
+       - Normalized: Relative rotation from yaw orientation at nominal timestep (3-dim rotation vector)
     
     5. Root Linear Velocity (3 dims):
        - Root linear velocity (vx, vy, vz)
        - Range: [186:189]
-       - Normalized: rotated to yaw frame at nominal timestep
+       - Original frame: Global XYZ vectors
+       - Normalized: Rotated to yaw frame at nominal timestep
     
     6. Root Angular Velocity (3 dims):
        - Root angular velocity (wx, wy, wz)
        - Range: [189:192]
-       - Normalized: rotated to yaw frame at nominal timestep
+       - Original frame: Global XYZ rotation rate vectors
+       - Normalized: Rotated to yaw frame at nominal timestep
     
     Total: 90 + 90 + 3 + 3 + 3 + 3 = 192 dims (base components)
     
@@ -55,7 +74,7 @@ class G1DatasetBase(OfflineDataset):
     - Task-specific observations
     
     G1_Dataset_EE variant adds:
-    - End-effector rotations (6 dims for 2 end-effectors × 3 rotation components)
+    - End-effector rotations (6 dims for 2 end-effectors × 3 rotation components from quaternions)
     
     Character Frame Normalization:
     ==============================
