@@ -382,15 +382,15 @@ class JointDiffusionActor(SequentialDiffusionModel, BaseActor):
                 action_pred, action_traj, reduction="none"
             )
 
-        # BUG: This should be fix for (elspider air)
-        hip_idxs = [0, 1, 2, 6, 7, 8]
-        knee_idxs = [3, 9]
-        ankle_idxs = [4, 5, 10, 11]
+        # # BUG: This should be fix for (elspider air)
+        # hip_idxs = [0, 1, 2, 6, 7, 8]
+        # knee_idxs = [3, 9]
+        # ankle_idxs = [4, 5, 10, 11]
         
-        action_loss_scale = torch.ones(29, device=self.device) * 2 
-        action_loss_scale[...,hip_idxs]   = 6 # 4
-        action_loss_scale[...,knee_idxs]  = 6 
-        action_loss_scale[...,ankle_idxs] = 6 
+        # action_loss_scale = torch.ones(29, device=self.device) * 2 
+        # action_loss_scale[...,hip_idxs]   = 6 # 4
+        # action_loss_scale[...,knee_idxs]  = 6 
+        # action_loss_scale[...,ankle_idxs] = 6 
 
         # action_loss = action_loss * 2 # times 3
         action_loss = action_loss * self.action_loss_weights.to(self.device)

@@ -25,6 +25,7 @@ class DiffuseCLoC(JointDiffusionActor):
         self.get_emphasis_projection()
 
         self.action_schedule = 'from_xT_decreasing'
+        # PROBLEM: why not using from_xT_decreasing
         self.state_schedule = 'from_xT_step'
 
     def act(
