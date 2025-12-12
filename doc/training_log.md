@@ -55,8 +55,9 @@ For policies trained on G1 dataset collected from TextOpTracker:
 
 ```bash
 python eval.py \
-    --checkpoint outputs/g1_diffuse_run/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-12-15-34-34-g1_diffuse-test_g1/checkpoints/latest.ckpt \
     -o eval_output_isaaclab \
+    --config g1_diffuse.yaml \
     --env_type isaac_lab \
     --task Isaac-TextOp-Diffusion-G1-v0 \
     --num_envs 16 \

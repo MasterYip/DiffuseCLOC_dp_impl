@@ -28,8 +28,6 @@ from omegaconf import OmegaConf
 import hydra
 
 from diffusion_policy import DIFFUSION_POLICY_ROOT
-from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
-from diffusion_policy.env_runner.isaac_lab_runner import IsaacLabRunner
 from diffusion_policy.trainer.base_trainer import BaseTrainer
 
 
@@ -101,6 +99,7 @@ def main(checkpoint, config, output_dir, device, env_type, task, num_envs, max_s
 
     # Create environment runner based on env_type
     if env_type == 'isaac_lab':
+        from diffusion_policy.env_runner.isaac_lab_runner import IsaacLabRunner
         env_runner = IsaacLabRunner(
             output_dir=output_dir,
             task_name=task,
@@ -111,6 +110,7 @@ def main(checkpoint, config, output_dir, device, env_type, task, num_envs, max_s
             device=device
         )
     else:  # legged_gym
+        from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
         env_runner = LeggedGymRunner(
             output_dir=output_dir,
             task_name=task,
