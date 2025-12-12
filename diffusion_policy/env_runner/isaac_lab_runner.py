@@ -12,11 +12,6 @@ import tqdm
 from typing import Dict, Optional
 from pathlib import Path
 
-# Add TextOpTracker to path
-TEXTOP_TRACKER_PATH = str(Path(__file__).parent.parent.parent.parent.parent / "TextOpTracker")
-if TEXTOP_TRACKER_PATH not in sys.path:
-    sys.path.append(TEXTOP_TRACKER_PATH)
-
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
 
 
@@ -81,11 +76,12 @@ class IsaacLabRunner(BaseLowdimRunner):
         if self.env is not None:
             return
         
-        # Import Isaac Lab after setting up paths
+        # CRITICAL: Must initialize AppLauncher BEFORE any imports of Isaac Lab modules
+        # This ensures Isaac Sim is properly initialized before environment registration
         from isaaclab.app import AppLauncher
         import argparse
         
-        # Create app launcher
+        # Create app launcher - this must happen first!
         app_launcher_args = argparse.Namespace(
             headless=self.headless,
             livestream=False,
@@ -101,10 +97,22 @@ class IsaacLabRunner(BaseLowdimRunner):
         # Import tasks to register environments
         import textop_tracker.tasks.diffusion  # noqa: F401
         
+        # Load environment config using Hydra (similar to play.py)
+        from isaaclab_tasks.utils.hydra import hydra_task_config
+        
+        @hydra_task_config(self.task_name, None)
+        def get_env_cfg(env_cfg, agent_cfg):
+            """Load environment configuration from task."""
+            # Update num_envs if specified
+            env_cfg.scene.num_envs = self.n_envs
+            return env_cfg
+        
+        env_cfg = get_env_cfg()
+        
         print(f"Creating Isaac Lab environment: {self.task_name} with {self.n_envs} envs")
         
-        # Create environment
-        self.env = gym.make(self.task_name, num_envs=self.n_envs, render_mode=None)
+        # Create environment with config (like play.py)
+        self.env = gym.make(self.task_name, cfg=env_cfg, render_mode=None)
         self.env_unwrapped = self.env.unwrapped
 
     def _cleanup(self):
