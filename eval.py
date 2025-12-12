@@ -1,9 +1,13 @@
 """
-Evaluation script for DiffuseCLoC policies in Legged Gym environments.
+Evaluation script for DiffuseCLoC policies in Legged Gym or Isaac Lab environments.
 
 Usage:
-    python eval.py --checkpoint outputs/latest.ckpt -o eval_output --task g1_flat --num_envs 16
-    python eval.py --checkpoint outputs/latest.ckpt --config joint_diffuse.yaml -o eval_output --task g1_flat
+    # Legged Gym
+    python eval.py --checkpoint outputs/latest.ckpt -o eval_output --env_type legged_gym --task g1_flat --num_envs 16
+    python eval.py --checkpoint outputs/latest.ckpt --config joint_diffuse.yaml -o eval_output --env_type legged_gym --task g1_flat
+    
+    # Isaac Lab
+    python eval.py --checkpoint outputs/latest.ckpt -o eval_output --env_type isaac_lab --task Isaac-TextOp-Diffusion-G1-v0 --num_envs 16
 """
 
 import sys
@@ -25,6 +29,7 @@ import hydra
 
 from diffusion_policy import DIFFUSION_POLICY_ROOT
 from diffusion_policy.env_runner.legged_gym_runner import LeggedGymRunner
+from diffusion_policy.env_runner.isaac_lab_runner import IsaacLabRunner
 from diffusion_policy.trainer.base_trainer import BaseTrainer
 
 
@@ -33,13 +38,14 @@ from diffusion_policy.trainer.base_trainer import BaseTrainer
 @click.option('--config', default="legged_gym_diffuse.yaml", help='Config file to load instead of using checkpoint config (e.g., joint_diffuse.yaml)')
 @click.option('-o', '--output_dir', required=True, help='Output directory for results')
 @click.option('-d', '--device', default='cuda:0', help='Device for inference')
-@click.option('-t', '--task', default='g1_flat', help='Legged gym task name')
+@click.option('--env_type', type=click.Choice(['legged_gym', 'isaac_lab']), default='legged_gym', help='Environment type (legged_gym or isaac_lab)')
+@click.option('-t', '--task', default='g1_flat', help='Task name (e.g., g1_flat for legged_gym, Isaac-TextOp-Diffusion-G1-v0 for isaac_lab)')
 @click.option('--num_envs', default=16, help='Number of parallel environments')
 @click.option('--max_steps', default=1000, help='Maximum steps per evaluation')
 @click.option('--n_obs_steps', default=4, help='Observation history length')
 @click.option('--headless', is_flag=True, default=False, help='Run headless (no visualization)')
-def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_obs_steps, headless):
-    """Evaluate a trained DiffuseCLoC policy in Legged Gym."""
+def main(checkpoint, config, output_dir, device, env_type, task, num_envs, max_steps, n_obs_steps, headless):
+    """Evaluate a trained DiffuseCLoC policy in Legged Gym or Isaac Lab."""
     
     # Create output directory
     if os.path.exists(output_dir):
@@ -93,20 +99,32 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
     print(f"BCAgent loaded and moved to {device}")
     print(f"Policy type: {type(bc_agent.actor).__name__}")
 
-    # Create environment runner
-    env_runner = LeggedGymRunner(
-        output_dir=output_dir,
-        task_name=task,
-        n_envs=num_envs,
-        max_steps=max_steps,
-        n_obs_steps=n_obs_steps,
-        headless=headless,
-        device=device,
-        realtime_mode=True
-    )
+    # Create environment runner based on env_type
+    if env_type == 'isaac_lab':
+        env_runner = IsaacLabRunner(
+            output_dir=output_dir,
+            task_name=task,
+            n_envs=num_envs,
+            max_steps=max_steps,
+            n_obs_steps=n_obs_steps,
+            headless=headless,
+            device=device
+        )
+    else:  # legged_gym
+        env_runner = LeggedGymRunner(
+            output_dir=output_dir,
+            task_name=task,
+            n_envs=num_envs,
+            max_steps=max_steps,
+            n_obs_steps=n_obs_steps,
+            headless=headless,
+            device=device,
+            realtime_mode=True
+        )
 
     # Run evaluation with BCAgent
     print(f"\nStarting evaluation...")
+    print(f"  Environment Type: {env_type}")
     print(f"  Task: {task}")
     print(f"  Num envs: {num_envs}")
     print(f"  Max steps: {max_steps}")
@@ -139,6 +157,7 @@ def main(checkpoint, config, output_dir, device, task, num_envs, max_steps, n_ob
         f.write(f"==================\n\n")
         f.write(f"Checkpoint: {checkpoint}\n")
         f.write(f"Config: {config if config else 'from checkpoint'}\n")
+        f.write(f"Environment Type: {env_type}\n")
         f.write(f"Task: {task}\n")
         f.write(f"Num Envs: {num_envs}\n")
         f.write(f"Max Steps: {max_steps}\n")
