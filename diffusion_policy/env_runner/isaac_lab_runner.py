@@ -98,19 +98,13 @@ class IsaacLabRunner(BaseLowdimRunner):
         import textop_tracker.tasks.diffusion  # noqa: F401
         
         # Load environment config using Hydra (similar to play.py)
-        from isaaclab_tasks.utils.hydra import hydra_task_config
+        from isaaclab_tasks.utils.hydra import register_task_to_hydra
         
-        @hydra_task_config(self.task_name, None)
-        def get_env_cfg(env_cfg, agent_cfg):
-            """Load environment configuration from task."""
-            # Update num_envs if specified
-            env_cfg.scene.num_envs = self.n_envs
-            return env_cfg
-        
-        env_cfg = get_env_cfg()
+        env_cfg, _ = register_task_to_hydra(
+            task_name=self.task_name,
+            agent_cfg_entry_point=None)
         
         print(f"Creating Isaac Lab environment: {self.task_name} with {self.n_envs} envs")
-        
         # Create environment with config (like play.py)
         self.env = gym.make(self.task_name, cfg=env_cfg, render_mode=None)
         self.env_unwrapped = self.env.unwrapped

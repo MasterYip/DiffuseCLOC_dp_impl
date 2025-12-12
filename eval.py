@@ -46,8 +46,8 @@ def main(checkpoint, config, output_dir, device, env_type, task, num_envs, max_s
     """Evaluate a trained DiffuseCLoC policy in Legged Gym or Isaac Lab."""
     
     # Create output directory
-    if os.path.exists(output_dir):
-        click.confirm(f"Output path {output_dir} exists! Overwrite?", abort=True)
+    # if os.path.exists(output_dir):
+    #     click.confirm(f"Output path {output_dir} exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Load checkpoint
