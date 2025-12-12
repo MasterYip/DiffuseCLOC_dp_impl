@@ -23,6 +23,7 @@ python ./diffusion_policy/diffusion_policy/scripts/legged_gym_dataset_gen.py \
 mamba activate pdplanner
 # Train with default configuration
 python train.py --cfg legged_gym_diffuse.yaml --exp_name default_run
+python train.py --cfg g1_diffuse.yaml --exp_name default_run
 ```
 
 **Continue training**
