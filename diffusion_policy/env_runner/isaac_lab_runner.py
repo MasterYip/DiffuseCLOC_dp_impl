@@ -103,6 +103,7 @@ class IsaacLabRunner(BaseLowdimRunner):
         env_cfg, _ = register_task_to_hydra(
             task_name=self.task_name,
             agent_cfg_entry_point=None)
+        env_cfg.scene.num_envs = self.n_envs
         
         print(f"Creating Isaac Lab environment: {self.task_name} with {self.n_envs} envs")
         # Create environment with config (like play.py)
@@ -191,14 +192,21 @@ class IsaacLabRunner(BaseLowdimRunner):
             with torch.no_grad():
                 # BCAgent.act() returns actions for the prediction horizon
                 # We only use the first action
-                action_dict = bc_agent.act(obs_dict_policy)
+                result = bc_agent.act(obs_dict_policy)
                 
                 # Extract first action from horizon
                 # Shape: [n_envs, horizon, action_dim] -> [n_envs, action_dim]
-                if "action" in action_dict:
-                    actions = action_dict["action"][:, 0, :]  # First timestep
+                # Handle different return types from BCAgent
+                if isinstance(result, tuple) and len(result) >= 2:
+                    # Joint diffusion case: (action_traj, state_traj, ...)
+                    action_traj, state_traj = result[0], result[1]
+                    actions = action_traj[:, 0, :] if action_traj.dim() == 3 else action_traj
                 else:
-                    raise ValueError("BCAgent did not return 'action' in action_dict")
+                    # Standard diffusion case: just actions
+                    actions = result[:, 0, :] if result.dim() == 3 else result
+                    action_traj = result
+                    state_traj = None
+
 
             # Step environment
             obs_dict, rewards, terminated, truncated, infos = self.env.step(actions)

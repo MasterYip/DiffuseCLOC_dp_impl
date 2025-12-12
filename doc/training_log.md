@@ -61,8 +61,7 @@ python eval.py \
     --env_type isaac_lab \
     --task Isaac-TextOp-Diffusion-G1-v0 \
     --num_envs 16 \
-    --max_steps 1000 \
-    --headless
+    --max_steps 10000
 ```
 
 **Key Differences**:
