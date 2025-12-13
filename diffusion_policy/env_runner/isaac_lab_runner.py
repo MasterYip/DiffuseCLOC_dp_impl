@@ -150,16 +150,19 @@ class IsaacLabRunner(BaseLowdimRunner):
 
         print(f"Running evaluation on device: {device}")
         
+        # Import G1_Dataset for normalization
+        from diffusion_policy.dataset.g1_offline_dataset import G1_Dataset
+        
         # Reset environment
         obs_dict, info = self.env.reset()
         
-        # Extract single observation (already normalized by diffusion_state_observation)
-        # Shape: [n_envs, 192] for G1_Dataset format
-        obs = obs_dict["policy"]  # [n_envs, 192]
+        # Extract raw state observation (not normalized yet)
+        # Shape: [n_envs, 455] (body_pos + body_rot + body_lin_vel + body_ang_vel + joint_pos + joint_vel + root_pos + root_rot)
+        raw_obs = obs_dict["policy"]  # [n_envs, 455]
         
-        # Initialize observation history: (n_envs, n_obs_steps, obs_dim)
+        # Initialize raw state history: (n_envs, n_obs_steps, 455)
         # Repeat current observation for history
-        obs_history = obs.unsqueeze(1).repeat(1, self.n_obs_steps, 1)  # [n_envs, n_obs_steps, 192]
+        raw_history = raw_obs.unsqueeze(1).repeat(1, self.n_obs_steps, 1)  # [n_envs, n_obs_steps, 455]
 
         # Metrics tracking
         episode_rewards = []
@@ -184,10 +187,36 @@ class IsaacLabRunner(BaseLowdimRunner):
         for step_idx in range(self.max_steps):
             step_start_time = time.time()
             
+            # Split raw history into components for normalization
+            # raw_history: [n_envs, n_obs_steps, 455]
+            # Split into: body_pos(90), body_rot(120), body_lin_vel(90), body_ang_vel(90), joint_pos(29), joint_vel(29), root_pos(3), root_rot(4)
+            body_pos = raw_history[:, :, :90].view(self.n_envs, self.n_obs_steps, 30, 3)
+            body_rot = raw_history[:, :, 90:210].view(self.n_envs, self.n_obs_steps, 30, 4)
+            body_lin_vel = raw_history[:, :, 210:300].view(self.n_envs, self.n_obs_steps, 30, 3)
+            body_ang_vel = raw_history[:, :, 300:390].view(self.n_envs, self.n_obs_steps, 30, 3)
+            joint_pos = raw_history[:, :, 390:419]
+            joint_vel = raw_history[:, :, 419:448]
+            root_pos = raw_history[:, :, 448:451]
+            root_rot = raw_history[:, :, 451:455]
+            
+            # Apply G1_Dataset normalization with correct nominal_frame_idx (n_obs_steps - 1)
+            # This matches the training process where nominal frame is the last past step
+            obs_normalized = G1_Dataset.state_normalize(
+                root_pos_frame=root_pos,
+                root_rot_frame=root_rot,
+                body_pos=body_pos,
+                body_rot=body_rot,
+                body_lin_vel=body_lin_vel,
+                body_ang_vel=body_ang_vel,
+                nominal_frame_idx=self.n_obs_steps - 1,  # Use last frame as reference (matches training)
+                ee_idxs=G1_Dataset.ee_idxs(),
+                joint_pos=joint_pos,
+                return_raw=False,
+            )  # Returns [n_envs, n_obs_steps, 192]
+            
             # Prepare observation dict for BCAgent
-            # obs_history is already on GPU from environment
-            obs_dict_policy = {"obs": obs_history.to(device)}
-
+            obs_dict_policy = {"obs": obs_normalized.to(device)}
+            
             # Get action from BCAgent (includes normalization if needed)
             with torch.no_grad():
                 # BCAgent.act() returns actions for the prediction horizon
@@ -212,14 +241,14 @@ class IsaacLabRunner(BaseLowdimRunner):
             obs_dict, rewards, terminated, truncated, infos = self.env.step(actions)
             dones = terminated | truncated
             
-            # Extract new observation (already normalized)
-            obs = obs_dict["policy"]  # [n_envs, 192]
+            # Extract new raw observation
+            raw_obs = obs_dict["policy"]  # [n_envs, 455]
             
-            # Update observation history (shift and append)
-            obs_history = torch.cat([
-                obs_history[:, 1:, :],  # Remove oldest
-                obs.unsqueeze(1)  # Add newest
-            ], dim=1)  # [n_envs, n_obs_steps, 192]
+            # Update raw observation history (shift and append)
+            raw_history = torch.cat([
+                raw_history[:, 1:, :],  # Remove oldest
+                raw_obs.unsqueeze(1)  # Add newest
+            ], dim=1)  # [n_envs, n_obs_steps, 455]
             
             # Update metrics
             current_rewards += rewards
