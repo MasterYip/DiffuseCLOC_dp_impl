@@ -131,10 +131,13 @@ class IsaacLabRunner(BaseLowdimRunner):
         Returns:
             results: Evaluation results dictionary
         """
-        try:
-            return self._run_internal(bc_agent, cfg)
-        finally:
-            self._cleanup()
+        return self._run_internal(bc_agent, cfg)
+        # try:
+        #     return self._run_internal(bc_agent, cfg)
+        # except Exception as e:
+        #     raise e
+        # finally:
+        #     self._cleanup()
 
     def _run_internal(self, bc_agent, cfg) -> Dict:
         """Internal run method with proper cleanup."""
