@@ -55,7 +55,7 @@ For policies trained on G1 dataset collected from TextOpTracker:
 
 ```bash
 python eval.py \
-    --checkpoint outputs/December-12-15-34-34-g1_diffuse-test_g1/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-12-21-27-49-g1_diffuse-default_run/checkpoints/latest.ckpt \
     -o eval_output_isaaclab \
     --config g1_diffuse.yaml \
     --env_type isaac_lab \
@@ -64,38 +64,6 @@ python eval.py \
     --max_steps 10000
 ```
 
-**Key Differences**:
-- Isaac Lab runner uses proper state normalization matching G1_Dataset format
-- Observations are automatically normalized in the task (diffusion_state_observation)
-- No manual observation conversion needed - handled by the environment
-- Supports same checkpoint format as legged gym evaluation
-
-### Isaac Lab Deployment Setup
-
-**Task Configuration**:
-- Task: `Isaac-TextOp-Diffusion-G1-v0` (registered in TextOpTracker/tasks/diffusion)
-- Observation: 192-dim normalized state matching G1_Dataset collection format
-  - body_pos_local: [90] (30 bodies × 3)
-  - body_lin_vel_local: [90] (30 bodies × 3)
-  - root_pos_local: [3]
-  - root_rot_local: [3] (rotation vector)
-  - root_lin_vel_local: [3]
-  - root_ang_vel_local: [3]
-
-**Observation Normalization**:
-- Performed in `diffusion_state_observation()` function
-- Matches G1_Dataset.state_normalize() logic:
-  - Character-frame normalization (yaw-aligned)
-  - Body positions relative to root
-  - Velocities in yaw frame
-- No additional normalization needed in runner
-
-**Data Flow**:
-1. Isaac Lab env → raw robot state
-2. diffusion_state_observation() → normalized 192-dim obs
-3. Observation history buffer (n_obs_steps × 192)
-4. BCAgent.act() → actions
-5. Env.step() → next state
 
 ### Problem:
 
@@ -108,8 +76,6 @@ python eval.py \
 5. why not using `from_xT_decreasing`
         self.state_schedule = 'from_xT_step'
 6. **Why 1128jit dataset version are trained better than 1207jit?**
-7. **Isaac Lab Deployment**: Does observation normalization match training data collection exactly?
-   **Answer**: Yes - diffusion_state_observation() implements the same normalization as G1_Dataset.state_normalize()
 
 ### Log
 
