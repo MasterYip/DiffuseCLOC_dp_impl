@@ -76,6 +76,7 @@ python eval.py \
 5. why not using `from_xT_decreasing`
         self.state_schedule = 'from_xT_step'
 6. **Why 1128jit dataset version are trained better than 1207jit?**
+7. BUG: DiffuseCLOC use **nominal frame index** (in g1_offline_dataset.py) to normalize vel state, but this don't ensure the **state consistency**?
 
 ### Log
 

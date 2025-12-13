@@ -269,7 +269,12 @@ class G1DatasetBase(OfflineDataset):
         body_ang_vel = torch.stack([item["body_ang_vel"] for item in batch]).view(B, H, -1, 3)
 
         # Normalize state  
-        obs_stack = self.__class__.state_normalize(root_pos_frame, root_rot_frame, body_pos, body_rot, body_lin_vel, body_ang_vel, self.n_past_steps - 1, self.__class__.ee_idxs(), joint_pos)
+        # BUG: DiffuseCLOC use nominal frame index to normalize vel state,
+        # But this don't ensure the state consistency?
+        obs_stack = self.__class__.state_normalize(root_pos_frame, root_rot_frame, body_pos, body_rot, 
+                                                   body_lin_vel, body_ang_vel, 
+                                                   self.n_past_steps - 1, 
+                                                   self.__class__.ee_idxs(), joint_pos)
 
         # Apply symmetry augmentation if configured (doubles batchsize)
         if self.symm_aug:
