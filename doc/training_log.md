@@ -55,7 +55,7 @@ For policies trained on G1 dataset collected from TextOpTracker:
 
 ```bash
 python eval.py \
-    --checkpoint outputs/December-12-21-27-49-g1_diffuse-default_run/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-16-14-48-31-g1_diffuse-default_run/checkpoints/latest.ckpt \
     -o eval_output_isaaclab \
     --config g1_diffuse.yaml \
     --env_type isaac_lab \
@@ -77,6 +77,19 @@ python eval.py \
         self.state_schedule = 'from_xT_step'
 6. **Why 1128jit dataset version are trained better than 1207jit?**
 7. BUG: DiffuseCLOC use **nominal frame index** (in g1_offline_dataset.py) to normalize vel state, but this don't ensure the **state consistency**?
+8. There is **position shifting** in dataset (in one episode): 
+```python
+print(np.array2string(batch['obs'][0, :, 180:].view(-1,12).cpu().numpy(), formatter={'float_kind': lambda x: f"{x:.3f}"}))
+```
+```txt
+ [0.167 -0.042 0.756 -0.015 0.088 0.040 1.474 -0.125 -0.327 2.356 -0.318 -0.355]
+ [0.193 -0.045 0.755 -0.019 0.091 -0.012 1.228 -0.172 0.083 -0.640 -0.014 -2.801]
+ [0.216 -0.048 0.758 -0.024 0.092 -0.058 1.093 -0.184 0.168 -0.022 -0.086 -1.750]
+ [0.237 -0.053 0.761 -0.019 0.085 -0.090 1.030 -0.210 0.217 0.471 -0.577 -1.398]
+ [-4.833 1.597 0.770 0.007 0.081 -0.622 1.173 -0.344 -0.348 0.203 0.675 -0.192]
+ [-4.808 1.589 0.762 0.021 0.077 -0.622 1.271 -0.332 -0.342 1.109 -1.003 0.499]
+ [-4.785 1.581 0.756 0.040 0.065 -0.614 1.253 -0.340 -0.278 0.503 -0.787 0.101]
+```
 
 ### Log
 

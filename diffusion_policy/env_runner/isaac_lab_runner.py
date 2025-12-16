@@ -193,14 +193,14 @@ class IsaacLabRunner(BaseLowdimRunner):
             # Split raw history into components for normalization
             # raw_history: [n_envs, n_obs_steps, 455]
             # Split into: body_pos(90), body_rot(120), body_lin_vel(90), body_ang_vel(90), joint_pos(29), joint_vel(29), root_pos(3), root_rot(4)
-            body_pos = raw_history[:, :, :90].view(self.n_envs, self.n_obs_steps, 30, 3)
-            body_rot = raw_history[:, :, 90:210].view(self.n_envs, self.n_obs_steps, 30, 4)
-            body_lin_vel = raw_history[:, :, 210:300].view(self.n_envs, self.n_obs_steps, 30, 3)
-            body_ang_vel = raw_history[:, :, 300:390].view(self.n_envs, self.n_obs_steps, 30, 3)
-            joint_pos = raw_history[:, :, 390:419]
-            joint_vel = raw_history[:, :, 419:448]
-            root_pos = raw_history[:, :, 448:451]
-            root_rot = raw_history[:, :, 451:455]
+            body_pos = raw_history[:, :, :90].view(self.n_envs, self.n_obs_steps, 30, 3).clone()
+            body_rot = raw_history[:, :, 90:210].view(self.n_envs, self.n_obs_steps, 30, 4).clone()
+            body_lin_vel = raw_history[:, :, 210:300].view(self.n_envs, self.n_obs_steps, 30, 3).clone()
+            body_ang_vel = raw_history[:, :, 300:390].view(self.n_envs, self.n_obs_steps, 30, 3).clone()
+            joint_pos = raw_history[:, :, 390:419].clone()
+            joint_vel = raw_history[:, :, 419:448].clone()
+            root_pos = raw_history[:, :, 448:451].clone()
+            root_rot = raw_history[:, :, 451:455].clone()
             
             # Apply G1_Dataset normalization with correct nominal_frame_idx (n_obs_steps - 1)
             # This matches the training process where nominal frame is the last past step
@@ -239,7 +239,7 @@ class IsaacLabRunner(BaseLowdimRunner):
                     action_traj = result
                     state_traj = None
 
-
+            # BUG: Actions are consistent
             # Step environment
             obs_dict, rewards, terminated, truncated, infos = self.env.step(actions)
             dones = terminated | truncated
