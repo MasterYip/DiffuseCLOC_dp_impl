@@ -72,7 +72,7 @@ def main(checkpoint, config, output_dir, device, env_type, task, num_envs, max_s
 
     # Initialize trainer (same as train.py)
     cls = hydra.utils.get_class(cfg._target_)
-    trainer: BaseTrainer = cls(cfg)
+    trainer: BaseTrainer = cls(cfg, init_wandb=False)
     
     # Load checkpoint into trainer (this will also reconstruct normalizer if it exists in checkpoint)
     trainer.load_payload(payload, exclude_keys=None, include_keys=None)

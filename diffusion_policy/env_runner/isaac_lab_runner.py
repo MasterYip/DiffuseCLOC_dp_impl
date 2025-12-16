@@ -95,7 +95,7 @@ class IsaacLabRunner(BaseLowdimRunner):
         import gymnasium as gym
         
         # Import tasks to register environments
-        import textop_tracker.tasks.diffusion  # noqa: F401
+        import textop_tracker.tasks.tracking  # noqa: F401
         
         # Load environment config using Hydra (similar to play.py)
         from isaaclab_tasks.utils.hydra import register_task_to_hydra
