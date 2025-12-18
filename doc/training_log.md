@@ -52,10 +52,11 @@ python eval.py \
 **Isaac Lab Evaluation (G1 Robot)**
 
 For policies trained on G1 dataset collected from TextOpTracker:
+NOTE: At least 40k steps (20eps for 512batch) the policy act a little bit.
 
 ```bash
 python eval.py \
-    --checkpoint outputs/December-16-14-48-31-g1_diffuse-default_run/checkpoints/latest.ckpt \
+    --checkpoint outputs/December-17-13-00-26-g1_diffuse-multi_motion/checkpoints/latest.ckpt \
     -o eval_output_isaaclab \
     --config g1_diffuse.yaml \
     --env_type isaac_lab \
@@ -66,6 +67,8 @@ python eval.py \
 
 
 ### Problem:
+
+**Major Problem**: CLOC generated traj is slow (unknown reason). **Half the gravity** or **decrease self.decimation** may improve policy perf.
 
 1. What is the effect of dataloadaer batch size to training speed and policy performance?
 2. Why DiffuseCLOC is sensitive to RL source data collection policy? (for some policy it can walk, for some it can't)
@@ -92,6 +95,10 @@ print(np.array2string(batch['obs'][0, :, 180:].view(-1,12).cpu().numpy(), format
 ```
 
 ### Log
+
+#### 20251218 G1 Test (DiffuseCLOC)
+
+1. The motion is still slow, G1 can struggle under half gravity (0,0,-4.81)
 
 #### 20251117 ElSpiderAir Don't walk [SOLVED]
 
