@@ -297,10 +297,10 @@ class LeggedGymRunner(BaseLowdimRunner):
                 if isinstance(result, tuple) and len(result) >= 2:
                     # Joint diffusion case: (action_traj, state_traj, ...)
                     action_traj, state_traj = result[0], result[1]
-                    actions = action_traj[:, 0, :] if action_traj.dim() == 3 else action_traj
+                    actions = action_traj[:, self.n_obs_steps, :] if action_traj.dim() == 3 else action_traj
                 else:
                     # Standard diffusion case: just actions
-                    actions = result[:, 0, :] if result.dim() == 3 else result
+                    actions = result[:, self.n_obs_steps, :] if result.dim() == 3 else result
                     action_traj = result
                     state_traj = None
 
