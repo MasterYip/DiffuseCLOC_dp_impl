@@ -16,7 +16,7 @@ data_collection:
 
 dataloader:
   batch_size: 512 #256 #128
-  num_workers: 1
+  num_workers: 4
   persistent_workers: true
   pin_memory: true
   shuffle: true
@@ -94,6 +94,8 @@ policy:
     n_past_steps: 4
     state_emphasis: random_emph_symm
     state_proj: true
+    # Select Rolling Diffusion / Full Denoise
+    randomize_noise_schedule: true
 
 dataset:
   _target_: diffusion_policy.dataset.g1_offline_dataset.G1_Dataset # AMASS_V5_0 #G1_Dataset
